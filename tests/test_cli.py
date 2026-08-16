@@ -164,6 +164,63 @@ def test_doctor_passes_with_no_servers_and_no_journal_yet(tmp_path: Path) -> Non
     assert "journal" in result.output.lower()
 
 
+def test_doctor_no_config_present(tmp_path: Path) -> None:
+    """No backstep.toml at all: config check FAILS with a path + backstep init
+    pointer, but journal/adapter/eval:postgres-mode checks still run, and
+    config-dependent checks (servers, unclassified tools) report SKIPPED."""
+    missing_path = tmp_path / "backstep.toml"
+
+    result = runner.invoke(app, ["doctor", "--config", str(missing_path)])
+
+    assert result.exit_code != 0
+    assert "backstep init" in result.output
+    assert "backstep.example.toml" in result.output
+    assert "SKIPPED" in result.output  # upstream servers / unclassified tools
+    # journal check must have run (its name appears in the table) even though
+    # config failed to load
+    assert "journal" in result.output.lower()
+
+
+def test_doctor_malformed_config(tmp_path: Path) -> None:
+    bad = tmp_path / "backstep.toml"
+    bad.write_text("this is not [ valid toml", encoding="utf-8")
+
+    result = runner.invoke(app, ["doctor", "--config", str(bad)])
+
+    assert result.exit_code != 0
+    assert "failed to parse" in result.output.lower() or "config" in result.output.lower()
+    assert "SKIPPED" in result.output
+    assert "journal" in result.output.lower()
+
+
+def test_doctor_valid_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A config that references the postgres adapter (like backstep.example.toml,
+    with an inert/unreachable DSN and no servers so the test doesn't need a
+    real MCP server): every config-dependent check should run and produce a
+    PASSED/FAILED verdict, never SKIPPED. BACKSTEP_PG_DSN is also set (to the
+    same inert DSN) so the config-independent env-adapter check runs instead
+    of legitimately reporting SKIPPED for being unset."""
+    monkeypatch.setenv("BACKSTEP_PG_DSN", "postgresql://postgres:postgres@127.0.0.1:1/postgres")
+    journal_path = (tmp_path / "journal.db").as_posix()
+    config_path = tmp_path / "backstep.toml"
+    config_path.write_text(
+        f"""
+journal_path = "{journal_path}"
+unknown_tool_behavior = "warn"
+
+[adapters.postgres]
+dsn = "postgresql://postgres:postgres@127.0.0.1:1/postgres"
+max_captured_rows = 1000
+""",
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(app, ["doctor", "--config", str(config_path)])
+
+    assert "SKIPPED" not in result.output  # all config-dependent checks ran
+    assert "journal" in result.output.lower()
+
+
 def test_doctor_reports_postgres_test_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from backstep.eval import TEST_PG_DSN_ENV_VAR
 

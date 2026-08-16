@@ -601,13 +601,20 @@ def doctor(config: str = _CONFIG_OPTION) -> None:
         raise typer.Exit(1)
 
 
+_DOCTOR_STATUS_TEXT = {
+    "passed": Text("PASSED", style="green"),
+    "failed": Text("FAILED", style="bold red"),
+    "skipped": Text("SKIPPED", style="yellow"),
+}
+
+
 def _print_doctor_report(report: DoctorReport) -> None:
     table = Table(title="backstep doctor")
     table.add_column("Check")
     table.add_column("Status")
     table.add_column("Detail")
     for check in report.checks:
-        status_text = Text("OK", style="green") if check.ok else Text("FAIL", style="bold red")
+        status_text = _DOCTOR_STATUS_TEXT[check.status]
         table.add_row(check.name, status_text, check.detail)
     console.print(table)
 
