@@ -10,7 +10,6 @@ post_fingerprint, reverted_at, revert_note) are ever updated.
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -19,6 +18,7 @@ from uuid import uuid4
 import aiosqlite
 from pydantic import BaseModel
 
+from backstep import codec
 from backstep.config import ReversibilityClass
 
 ActionStatus = Literal["pending", "committed", "failed", "reverted", "unrevertable"]
@@ -162,14 +162,15 @@ class Journal:
         `note` seeds the `error` column at insert time for non-fatal context
         (e.g. "capture_failed: ..."); it does not imply the action failed.
 
-        `args`/`pre_state` are serialized with `default=str` since adapters
-        journal raw DB values (`Decimal`, `datetime`, ...) that plain `json`
-        can't encode; round-tripping such a field back out of the journal
-        yields its string form, not the original type.
+        `args`/`pre_state` are serialized with `backstep.codec.dumps` since
+        adapters journal raw DB values (`Decimal`, `datetime`, ...) that
+        plain `json` can't encode; the codec's tagged-object scheme makes
+        this reversible, so reading such a field back out of the journal
+        (see `_row_to_action`) yields the original type, not a string.
         """
         action_id = str(uuid4())
-        args_json = json.dumps(args, default=str)
-        pre_state_json = None if pre_state is None else json.dumps(pre_state, default=str)
+        args_json = codec.dumps(args)
+        pre_state_json = None if pre_state is None else codec.dumps(pre_state)
         executed_at = _now_iso()
 
         async with self._seq_lock:
@@ -211,7 +212,7 @@ class Journal:
         self, action_id: str, post_state: Any | None, post_fingerprint: str | None
     ) -> None:
         await self._require_action(action_id)
-        post_state_json = None if post_state is None else json.dumps(post_state, default=str)
+        post_state_json = None if post_state is None else codec.dumps(post_state)
         await self._connection.execute(
             "UPDATE actions SET post_state_json = ?, post_fingerprint = ?, status = 'committed' "
             "WHERE id = ?",
@@ -335,9 +336,9 @@ def _row_to_action(row: aiosqlite.Row) -> ActionRecord:
         tool_name=row["tool_name"],
         adapter=row["adapter"],
         reversibility=row["reversibility"],
-        args=json.loads(row["args_json"]),
-        pre_state=None if row["pre_state_json"] is None else json.loads(row["pre_state_json"]),
-        post_state=None if row["post_state_json"] is None else json.loads(row["post_state_json"]),
+        args=codec.loads(row["args_json"]),
+        pre_state=None if row["pre_state_json"] is None else codec.loads(row["pre_state_json"]),
+        post_state=None if row["post_state_json"] is None else codec.loads(row["post_state_json"]),
         post_fingerprint=row["post_fingerprint"],
         status=row["status"],
         error=row["error"],

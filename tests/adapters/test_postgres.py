@@ -17,6 +17,7 @@ os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 import asyncpg
 import pytest
 
+from backstep import codec
 from backstep.adapters.postgres import PostgresAdapter, current_fingerprint
 from backstep.journal import ActionRecord
 from tests.pg_testing import requires_postgres
@@ -284,7 +285,7 @@ def test_fingerprint_is_stable_and_order_independent(adapter: PostgresAdapter) -
     fp2 = adapter.fingerprint(reordered_state)
     assert fp1 == fp2
 
-    expected_canonical = json.dumps(rows, sort_keys=True, separators=(",", ":"), default=str)
+    expected_canonical = codec.dumps(rows, sort_keys=True)
     expected = hashlib.sha256(expected_canonical.encode("utf-8")).hexdigest()
     assert fp1 == expected
 

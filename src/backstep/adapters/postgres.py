@@ -26,6 +26,7 @@ import asyncpg
 import sqlglot
 from sqlglot import exp
 
+from backstep import codec
 from backstep.adapters.base import PreState, RevertResult, canonical_fingerprint
 from backstep.config import BackstepConfig, PostgresAdapterConfig
 from backstep.journal import ActionRecord
@@ -157,10 +158,10 @@ def _fingerprint_state(state: dict[str, Any]) -> str:
         key_values: Any = row
         if isinstance(row, dict) and pk_columns and all(c in row for c in pk_columns):
             key_values = [row[c] for c in pk_columns]
-        return json.dumps(key_values, sort_keys=True, separators=(",", ":"), default=str)
+        return codec.dumps(key_values, sort_keys=True)
 
     ordered = sorted(rows, key=sort_key)
-    canonical = json.dumps(ordered, sort_keys=True, separators=(",", ":"), default=str)
+    canonical = codec.dumps(ordered, sort_keys=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 

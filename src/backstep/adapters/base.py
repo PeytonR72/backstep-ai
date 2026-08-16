@@ -9,11 +9,11 @@ without a pre-state snapshot.
 from __future__ import annotations
 
 import hashlib
-import json
 from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from backstep import codec
 from backstep.journal import ActionRecord
 
 
@@ -44,7 +44,7 @@ def canonical_fingerprint(state: dict[str, Any]) -> str:
     Available for adapters to implement `fingerprint()` with, and used by the
     proxy itself as the fallback fingerprint when a tool has no adapter.
     """
-    canonical = json.dumps(state, sort_keys=True, separators=(",", ":"), default=str)
+    canonical = codec.dumps(state, sort_keys=True)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
