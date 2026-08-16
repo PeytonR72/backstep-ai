@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 import typer
@@ -121,6 +122,14 @@ def eval_scenarios(
     out: str = typer.Option(
         DEFAULT_RESULTS_PATH, "--out", "-o", help="Path to write the JSON eval report"
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help=(
+            "Show full tracebacks for adapter capture failures (e.g. the "
+            "unparseable_sql scenario), instead of the default, traceback-free output."
+        ),
+    ),
 ) -> None:
     """Run the scripted recovery-benchmark scenarios against a throwaway Postgres.
 
@@ -130,6 +139,9 @@ def eval_scenarios(
     correct refusal. Requires Docker and the dev dependencies (this is a
     benchmarking tool, not something an installed backstep needs at runtime).
     """
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.getLogger("backstep").setLevel(logging.DEBUG)
     report = asyncio.run(run_eval_scenarios())
     path = write_eval_report(report, out)
     _print_eval_table(report)

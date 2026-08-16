@@ -223,7 +223,12 @@ class PostgresAdapter:
             if isinstance(statement, exp.Delete):
                 return await self._capture_rows(statement, op="delete")
         except Exception:
-            logger.exception("postgres adapter: capture failed for %r", tool_name)
+            logger.debug(
+                "postgres adapter: capture declined for %r (unparseable statement or "
+                "runtime error building the pre-state SELECT)",
+                tool_name,
+                exc_info=True,
+            )
             return None
 
         return None  # DDL, TRUNCATE, SELECT, etc. — nothing to capture

@@ -121,6 +121,23 @@ def _sql_server_config(postgres_dsn: str, reversibility: ReversibilityClass) -> 
     return BackstepConfig(servers=[server])
 
 
+def _display_refusal_reason(result: RevertResult) -> str:
+    """The eval table's notes column for a correctly-refused action.
+
+    `refused_no_pre_state`'s generic `RevertResult.detail` ("no pre_state was
+    captured for this action") is accurate but unhelpful on its own — it
+    doesn't say *why* nothing was captured. Since a capture-declined action
+    only ever reaches `refused_no_pre_state` because `capture()` (see
+    `backstep.adapters.postgres.PostgresAdapter.capture`) couldn't safely
+    turn the statement into a pre-state snapshot, spell that out here for the
+    eval row specifically; the journal's own stored note stays as-is for
+    `backstep log`/`backstep show`.
+    """
+    if result.outcome == "refused_no_pre_state":
+        return "capture declined: unparseable statement"
+    return result.detail
+
+
 def _grade(
     scenario: Scenario,
     reports: list[RevertResult],
@@ -139,7 +156,7 @@ def _grade(
                 "been refused (drift or an uncapturable statement)",
             )
         if refused:
-            reasons = "; ".join(f"{r.tool_name}: {r.detail}" for r in refused)
+            reasons = "; ".join(f"{r.tool_name}: {_display_refusal_reason(r)}" for r in refused)
             return "refused", f"correctly refused ({len(refused)} action(s)): {reasons}"
         return "none", "expected a refusal, but nothing was journaled to refuse in the first place"
 

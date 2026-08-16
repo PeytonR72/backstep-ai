@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,10 @@ from typer.testing import CliRunner
 
 from backstep.cli import app
 from backstep.journal import Journal
+
+os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
+
+from tests.pg_testing import requires_postgres  # noqa: E402
 
 runner = CliRunner()
 
@@ -234,3 +240,41 @@ def test_doctor_reports_postgres_test_mode(tmp_path: Path, monkeypatch: pytest.M
     external_result = runner.invoke(app, ["doctor", "--config", str(config_path)])
     assert "external" in external_result.output.lower()
     assert TEST_PG_DSN_ENV_VAR in external_result.output
+
+
+# -- eval ---------------------------------------------------------------
+#
+# These need real Postgres (backstep eval runs the actual scenarios), so
+# they're skipped rather than failed when neither BACKSTEP_TEST_PG_DSN nor a
+# working Docker daemon is available (see tests/pg_testing.py).
+
+
+@requires_postgres
+def test_eval_unparseable_sql_no_traceback_by_default() -> None:
+    """The unparseable_sql scenario's capture failure must not leak a raw
+    traceback into the eval table's console output, and the notes column
+    should show the clean, translated reason instead of the generic
+    "no pre_state was captured" detail."""
+    result = runner.invoke(app, ["eval"])
+
+    assert result.exit_code == 0
+    assert "Traceback (most recent call last)" not in result.output
+    assert "UndefinedTableError" not in result.output
+    assert "capture declined: unparseable statement" in result.output
+
+
+@requires_postgres
+def test_eval_verbose_restores_traceback(caplog: pytest.LogCaptureFixture) -> None:
+    """--verbose raises the postgres adapter's log level to DEBUG, which
+    restores the capture-failure traceback (attached via exc_info=True) to
+    the log record, even though it still doesn't get printed to the console
+    directly by rich."""
+    with caplog.at_level(logging.DEBUG, logger="backstep.adapters.postgres"):
+        result = runner.invoke(app, ["eval", "--verbose"])
+
+    assert result.exit_code == 0
+    assert any(
+        "UndefinedTableError" in (record.exc_text or "") or record.exc_info
+        for record in caplog.records
+        if record.name == "backstep.adapters.postgres"
+    )
