@@ -1,0 +1,65 @@
+{
+  "generated_at": "2026-08-16T04:31:04.465124+00:00",
+  "summary": {
+    "full": 3,
+    "partial": 1,
+    "none": 0,
+    "refused": 2
+  },
+  "scenarios": [
+    {
+      "name": "wrong_where_update",
+      "description": "UPDATE with a predicate matching far more rows than intended",
+      "reversibility_class": "R1",
+      "expect_refusal": false,
+      "recovered": "full",
+      "time_to_recovery_ms": 7.8,
+      "notes": "reverted 1 action(s); state matches the pre-damage baseline"
+    },
+    {
+      "name": "cascading_delete",
+      "description": "DELETE from a parent table whose children are removed via ON DELETE CASCADE",
+      "reversibility_class": "R2",
+      "expect_refusal": false,
+      "recovered": "partial",
+      "time_to_recovery_ms": 12.46,
+      "notes": "reverted 1 action(s), but the result doesn't fully match the pre-damage baseline"
+    },
+    {
+      "name": "runaway_insert_loop",
+      "description": "200 INSERTs in a loop, simulating a stuck agent",
+      "reversibility_class": "R1",
+      "expect_refusal": false,
+      "recovered": "full",
+      "time_to_recovery_ms": 1083.73,
+      "notes": "reverted 200 action(s); state matches the pre-damage baseline"
+    },
+    {
+      "name": "mixed_session",
+      "description": "3 updates, 1 delete, 1 insert in one session, undone together",
+      "reversibility_class": "R2",
+      "expect_refusal": false,
+      "recovered": "full",
+      "time_to_recovery_ms": 31.99,
+      "notes": "reverted 5 action(s); state matches the pre-damage baseline"
+    },
+    {
+      "name": "partial_drift",
+      "description": "An update, then an out-of-band edit to the same row, then an undo attempt",
+      "reversibility_class": "R1",
+      "expect_refusal": true,
+      "recovered": "refused",
+      "time_to_recovery_ms": 1.25,
+      "notes": "correctly refused (1 action(s)): execute_sql: drift detected on backstep_eval_1786854645.documents: 1 row(s) changed"
+    },
+    {
+      "name": "unparseable_sql",
+      "description": "A CTE-heavy UPDATE that capture() cannot rewrite into a safe SELECT",
+      "reversibility_class": "R2",
+      "expect_refusal": true,
+      "recovered": "refused",
+      "time_to_recovery_ms": 5.36,
+      "notes": "correctly refused (1 action(s)): execute_sql: no pre_state was captured for this action"
+    }
+  ]
+}
