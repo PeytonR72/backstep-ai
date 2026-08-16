@@ -28,3 +28,6 @@ Thumbs.db
 # Backstep local data
 *.db
 .backstep/
+
+# Worktrees
+.worktrees/
