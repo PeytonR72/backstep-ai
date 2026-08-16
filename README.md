@@ -2,6 +2,13 @@
 
 Backstep gives AI agents an undo button by recording what data looked like before the agent changed it. It runs as a proxy between an MCP (Model Context Protocol) client and one or more upstream MCP servers, journaling the state affected by write operations so that any change can later be reviewed and reverted.
 
+## Quickstart
+
+1. Copy `backstep.example.toml` to `backstep.toml` and fill in your upstream
+   server command, args, and Postgres DSN.
+2. Run `uv run backstep doctor` to verify config, journal, and adapter
+   connectivity before pointing a real MCP client at `backstep serve`.
+
 ## Development
 
 This project is managed with [uv](https://docs.astral.sh/uv/).

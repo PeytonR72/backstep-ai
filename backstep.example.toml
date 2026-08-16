@@ -1,0 +1,55 @@
+# backstep.example.toml
+#
+# Copy this to backstep.toml and fill in your own server command/args and
+# Postgres DSN. Run `backstep doctor` afterwards to verify connectivity.
+
+journal_path = "~/.backstep/journal.db"
+
+# What to do when an upstream tool has no matching [[servers.tools]] entry
+# below: "deny" blocks the call, "warn" lets it through but logs, "allow"
+# lets it through silently. Start with "warn" until you've classified every
+# tool your upstream server exposes.
+unknown_tool_behavior = "warn"
+
+[adapters.postgres]
+# Used by the postgres adapter to capture/revert row state independently of
+# whatever connection your upstream MCP server uses. Overridden by the
+# BACKSTEP_PG_DSN environment variable if set.
+dsn = "postgresql://postgres:postgres@localhost:54322/postgres"
+max_captured_rows = 1000
+
+[[servers]]
+name = "supabase"
+command = "npx"
+args = ["-y", "@supabase/mcp-server-supabase@latest", "--project-ref=<your-project-ref>"]
+
+[servers.env]
+SUPABASE_ACCESS_TOKEN = "<your-access-token>"
+
+# R0: read-only, no state change — safe to allow unconditionally.
+[[servers.tools]]
+name = "list_tables"
+reversibility = "R0"
+
+# R1: fully reversible — pre-state can be captured and restored exactly.
+# adapter = "postgres" tells backstep to use the Postgres adapter to
+# capture/revert the row(s) this tool's SQL touches.
+[[servers.tools]]
+name = "execute_sql"
+reversibility = "R1"
+adapter = "postgres"
+
+# R2: reversible with loss — e.g. a DELETE whose identity/metadata columns
+# can't be perfectly restored on revert. require_confirmation asks before
+# running.
+[[servers.tools]]
+name = "apply_migration"
+reversibility = "R2"
+adapter = "postgres"
+require_confirmation = true
+
+# R4: irreversible — blocked outright rather than merely warned about.
+[[servers.tools]]
+name = "delete_project"
+reversibility = "R4"
+blocked = true
