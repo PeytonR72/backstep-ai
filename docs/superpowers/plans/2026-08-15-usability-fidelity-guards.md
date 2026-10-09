@@ -1124,7 +1124,8 @@ async def test_committed_drift_refusal_force_revert_reverted(postgres_dsn):
     # 2. mutate the row out-of-band (raw SQL) to induce drift
     # 3. Reverter.revert_action(action_id, force=False) -> assert outcome is
     #    a refusal (refused_drift), and re-fetch the journal entry: assert
-    #    status == "committed", error/revert_note reflect the drift refusal
+    #    status == "committed", error/revert_note still unset (the drift
+    #    branch writes nothing to the journal)
     # 4. Reverter.revert_action(action_id, force=True) -> assert outcome ==
     #    "reverted"; re-fetch: assert status == "reverted", revert_note
     #    mentions "FORCED OVER DETECTED DRIFT" (per reverter.py:364-366)
@@ -1200,6 +1201,14 @@ PERMANENT_REFUSALS = REFUSAL_OUTCOMES - TRANSIENT_REFUSALS
 async def test_refusal_status_invariant(postgres_dsn, refusal_reason):
     """TRANSIENT refusals (drift) must leave status == 'committed'.
     PERMANENT refusals must leave status == 'unrevertable'."""
+
+> **Implementation note (Task 4):** as written this invariant cannot pass —
+> `refused_already_reverted` and `refused_not_committed` are status
+> preconditions that `_revert_entry` returns before any `mark_*` call, and 4a
+> itself requires an already-reverted entry to stay `"reverted"`. The
+> implemented test adds a third class, `STATUS_GUARD_REFUSALS`, asserting
+> status is left exactly as found; `PERMANENT_REFUSALS` is still computed by
+> subtraction so new refusal reasons default to it.
     entry = await _drive_to_refusal(postgres_dsn, refusal_reason)  # per-reason setup helper
     if refusal_reason in TRANSIENT_REFUSALS:
         assert entry.status == "committed", (
