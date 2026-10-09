@@ -49,6 +49,23 @@ all need a real Postgres. Two ways to give them one:
 Run `backstep doctor` to see which mode is currently active (look for the
 `eval:postgres-mode` row).
 
+### Mutation guard tests
+
+`tests/test_mutation_guards.py` proves the refusal machinery (drift
+detection, capture declining an unrewritable statement, the
+DELETE-reoccupation presence check) actually gates the outcome it claims
+to, rather than the passing grade being incidental. Each test
+monkeypatches one safety mechanism off and asserts the outcome flips from a
+refusal to a failure; a guard test that still sees a refusal with its
+target mechanism disabled means the scenario isn't exercising that
+mechanism, and fails. These need Postgres, like the tests above.
+
+Run just these:
+
+```sh
+uv run pytest -m mutation
+```
+
 ## Recovery benchmark
 
 Passing tests prove backstep's code is correct. They don't prove it actually

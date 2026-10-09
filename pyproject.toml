@@ -39,6 +39,9 @@ packages = ["src/backstep"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "mutation: disables one safety mechanism via monkeypatch and asserts the affected scenario/revert now fails instead of refusing correctly; a passing scenario under a mutation guard is a test bug, not a pass",
+]
 
 [tool.ruff]
 line-length = 100
