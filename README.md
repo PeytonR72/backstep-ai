@@ -1,107 +1,169 @@
-# backstep-ai
+# Backstep
 
-Backstep gives AI agents an undo button by recording what data looked like before the agent changed it. It runs as a proxy between an MCP (Model Context Protocol) client and one or more upstream MCP servers, journaling the state affected by write operations so that any change can later be reviewed and reverted.
+**An undo button for AI agents.**
 
-## Quickstart
+Backstep sits between an AI agent and the tools it calls. Before the agent changes any data, Backstep records what that data looked like. If the agent makes a mistake, you can review exactly what it did and roll it back with one command.
 
-1. Copy `backstep.example.toml` to `backstep.toml` and fill in your upstream
-   server command, args, and Postgres DSN.
-2. Run `uv run backstep doctor` to verify config, journal, and adapter
-   connectivity before pointing a real MCP client at `backstep serve`.
+AI agents are getting real write access to production systems like databases, file stores, and cloud accounts. They are also still prone to mistakes, like an UPDATE with the wrong WHERE clause or a loop that inserts the same row two hundred times. Most teams handle this risk by either keeping agents read only or hoping for the best. Backstep offers a third option. Let the agent act, keep a precise record of every change, and make recovery fast and safe.
 
-## Development
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![MCP](https://img.shields.io/badge/protocol-MCP-purple)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Typed](https://img.shields.io/badge/typed-mypy-informational)
 
-This project is managed with [uv](https://docs.astral.sh/uv/).
+## Highlights
+
+- **Transparent MCP proxy.** Works with any client that speaks the Model Context Protocol, such as Claude Desktop, Claude Code, or Cursor. The agent sees the same tools it always did. No changes to the agent or the upstream server are needed.
+- **Pre change state capture.** For SQL tools, Backstep parses each statement with sqlglot, works out which rows it will touch, and snapshots them before the statement runs.
+- **Safe, conservative rollback.** Before undoing anything, Backstep checks whether the data has changed since the agent touched it. If someone else edited the same rows, it refuses to revert rather than overwrite their work.
+- **Reversibility policy per tool.** Every tool is tagged on a scale from R0 (read only) to R4 (irreversible). Irreversible tools can be blocked outright, and risky ones can require human confirmation.
+- **LLM assisted setup, deterministic runtime.** `backstep init` uses Claude to propose a reversibility class for every tool an upstream server exposes. A human reviews the proposals, and at runtime the policy is enforced with no model in the loop.
+- **Measured, not just tested.** A recovery benchmark runs realistic "agent gone wrong" scenarios against a real Postgres database and grades how well Backstep actually recovered.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[AI agent / MCP client] --> B[Backstep proxy]
+    B --> C{Tool policy}
+    C -->|R0 read only| U[Upstream MCP server]
+    C -->|R1 to R3 writes| D[Capture pre state]
+    D --> J[(Journal)]
+    D --> U
+    C -->|R4 blocked| X[Refused]
+    U --> DB[(Postgres, APIs, files)]
+    J -.-> R[backstep undo]
+    R -.->|drift check, then restore| DB
+```
+
+1. **Intercept.** The proxy aggregates tools from every configured upstream MCP server and routes each call through an interceptor.
+2. **Classify.** The interceptor looks up the tool's reversibility class and decides whether to pass it through, journal it, ask for confirmation, or block it.
+3. **Capture.** For write operations, an adapter snapshots the affected state. The Postgres adapter opens its own connection, rewrites the agent's INSERT, UPDATE, or DELETE into a SELECT over the same rows, and stores the result.
+4. **Journal.** Each action is written to an append only SQLite journal with its arguments, the state before the change, and a fingerprint of the state right after it.
+5. **Revert.** When you undo an action, the reverter compares the live rows against that fingerprint. If nothing has drifted, it restores the original rows. If anything has, it stops and shows you the difference.
+
+The interceptor never alters or swallows the upstream response. If journaling itself fails, the failure is logged and the agent's call still goes through, so Backstep cannot break a working agent.
+
+## Reversibility classes
+
+| Class | Meaning | Default handling |
+|---|---|---|
+| R0 | Read only, no state change | Passed through |
+| R1 | Fully reversible, prior state can be restored exactly | Captured and journaled |
+| R2 | Reversible with some loss, such as a delete that loses identity metadata | Captured, optional confirmation |
+| R3 | Compensable only, needs a semantic inverse rather than a restore | Journaled without a snapshot |
+| R4 | Irreversible | Refused unless explicitly allowed, or blocked outright |
+
+## Recovery benchmark
+
+Passing unit tests proves the code is correct. It does not prove that Backstep saves you when an agent does something wrong. `backstep eval` runs a scripted set of failure scenarios end to end through the real proxy, journal, and Postgres adapter against a throwaway database, then grades each recovery.
+
+| Scenario | What the agent did | Result | Time to recover |
+|---|---|---|---|
+| wrong_where_update | UPDATE that matched far more rows than intended | Full recovery | 28 ms |
+| runaway_insert_loop | 200 INSERTs from a stuck loop | Full recovery | 2.7 s |
+| mixed_session | 3 updates, 1 delete, and 1 insert undone together | Full recovery | 87 ms |
+| cascading_delete | DELETE on a parent table with ON DELETE CASCADE children | Partial recovery | 37 ms |
+| partial_drift | Another process edited a row after the agent did | Correctly refused | 3 ms |
+| unparseable_sql | A CTE heavy statement that cannot be safely captured | Correctly refused | 17 ms |
+
+**3 full recoveries, 1 partial, and 2 correct refusals out of 6 scenarios.**
+
+Two of these results are worth calling out. In `partial_drift` and `unparseable_sql`, refusing is the passing outcome, because reverting would have destroyed someone else's data or guessed at a statement Backstep could not understand. The `cascading_delete` result is reported honestly as partial. Postgres removes child rows inside the same statement, before Backstep can see them individually, which is a real limit of statement level capture.
+
+Full results live in [`eval_results.json`](eval_results.json).
+
+## Engineering approach
+
+A tool whose job is safety has to be trustworthy itself, so the codebase is built around a few rules.
+
+- **Refuse instead of guess.** Any ambiguity, such as missing pre state, no primary key, drift, or an action that was already reverted, ends in a refusal with a clear reason. There are ten distinct revert outcomes, and only one of them modifies data.
+- **Mutation guard tests.** `tests/test_mutation_guards.py` switches off one safety mechanism at a time and asserts that the matching scenario now fails. This proves each guard is actually doing the work, rather than the test passing by accident.
+- **Lossless serialization.** A custom codec round trips Postgres types like Decimal, UUID, timestamps, bytes, and ranges exactly, so fingerprints stay stable and restored rows match the originals byte for byte.
+- **Append only journal.** Once an action is recorded, the fields describing what happened are never rewritten. Only status fields change.
+- **Real database tests.** Postgres tests run against a disposable container via testcontainers, with a fresh schema per test. Over 110 tests, fully typed with mypy, and linted with ruff.
+
+## Tech stack
+
+Python 3.11+, asyncio, the MCP Python SDK, asyncpg, sqlglot, SQLite (aiosqlite), Pydantic, Typer, Rich, the Anthropic API, pytest, and testcontainers. Managed with uv.
+
+## Getting started
+
+Install dependencies with [uv](https://docs.astral.sh/uv/).
 
 ```sh
 uv sync
-uv run backstep --help
+```
+
+Copy the example config and fill in your upstream server command and Postgres connection string.
+
+```sh
+cp backstep.example.toml backstep.toml
+```
+
+Optionally, let Claude propose a reversibility class for every tool your upstream servers expose. This requires `ANTHROPIC_API_KEY` to be set, and every proposal is written to `backstep.toml` for you to review.
+
+```sh
+uv run backstep init
+```
+
+Check that the config, journal, and database are all reachable.
+
+```sh
+uv run backstep doctor
+```
+
+Then point your MCP client at the proxy instead of the upstream server.
+
+```sh
+uv run backstep serve
+```
+
+## Command reference
+
+| Command | Purpose |
+|---|---|
+| `backstep serve` | Run the proxy between your MCP client and upstream servers |
+| `backstep init` | Discover upstream tools and propose reversibility classes with an LLM |
+| `backstep doctor` | Verify config, journal, and adapter connectivity |
+| `backstep sessions` | List recent agent sessions |
+| `backstep log <session>` | Show every action in a session |
+| `backstep show <action>` | Inspect one action, including any drift since it ran |
+| `backstep undo <action>` | Revert a single action |
+| `backstep undo-session <session>` | Revert a whole session in reverse order |
+| `backstep eval` | Run the recovery benchmark |
+
+## Development
+
+```sh
 uv run pytest
+uv run pytest -m mutation
 uv run ruff check .
 uv run mypy src
 ```
 
-### Postgres-backed tests and `backstep eval`
+Tests that need Postgres start a throwaway Docker container automatically. If Docker is not available, those tests are skipped rather than failed. To use a Postgres you already have running instead, set the `BACKSTEP_TEST_PG_DSN` environment variable to its connection string. Each test still gets its own disposable schema, so nothing leaks between runs. `backstep doctor` reports which mode is active.
 
-The Postgres adapter tests, the reverter's drift tests, and `backstep eval`
-all need a real Postgres. Two ways to give them one:
+## Project layout
 
-- **Docker (default, zero setup)** — leave `BACKSTEP_TEST_PG_DSN` unset and
-  these tests spin up a throwaway [testcontainers](https://testcontainers-python.readthedocs.io/)
-  Postgres automatically (one container per test session / per `eval` run).
-  Requires a working Docker daemon; the affected tests are skipped, not
-  failed, when one isn't available.
-- **An already-running Postgres (faster local iteration, no Docker)** — set
-  `BACKSTEP_TEST_PG_DSN` to point at it:
-
-  ```sh
-  export BACKSTEP_TEST_PG_DSN="postgresql://postgres:postgres@localhost:5432/postgres"
-  uv run pytest
-  uv run backstep eval
-  ```
-
-  Every test still gets its own disposable schema (`CREATE SCHEMA`, used as
-  that connection's `search_path`, `DROP SCHEMA ... CASCADE` afterwards) —
-  schemas are never reused across tests, so nothing leaks between runs.
-  `backstep eval` does the same with a single schema named
-  `backstep_eval_<timestamp>` for the whole run, dropped when it finishes.
-
-Run `backstep doctor` to see which mode is currently active (look for the
-`eval:postgres-mode` row).
-
-### Mutation guard tests
-
-`tests/test_mutation_guards.py` proves the refusal machinery (drift
-detection, capture declining an unrewritable statement, the
-DELETE-reoccupation presence check) actually gates the outcome it claims
-to, rather than the passing grade being incidental. Each test
-monkeypatches one safety mechanism off and asserts the outcome flips from a
-refusal to a failure; a guard test that still sees a refusal with its
-target mechanism disabled means the scenario isn't exercising that
-mechanism, and fails. These need Postgres, like the tests above.
-
-Run just these:
-
-```sh
-uv run pytest -m mutation
+```
+src/backstep/
+  proxy.py           MCP proxy and tool call interceptor
+  registry.py        Per tool reversibility policy lookup
+  journal.py         Append only SQLite journal of actions and pre state
+  reverter.py        Drift checking and revert orchestration
+  adapters/
+    base.py          Adapter interface and state fingerprinting
+    postgres.py      SQL parsing, row capture, and restore for Postgres
+  bootstrap.py       LLM assisted tool classification for backstep init
+  codec.py           Lossless JSON codec for database native types
+  eval.py            Recovery benchmark runner
+  doctor.py          Environment and config diagnostics
+  cli.py             Typer command line interface
+tests/
+  scenarios/         Agent failure scenarios used by backstep eval
 ```
 
-## Recovery benchmark
+## License
 
-Passing tests prove backstep's code is correct. They don't prove it actually
-saves you when an agent does something dumb. `backstep eval` (`tests/scenarios/`)
-is a scripted suite of "agent goes wrong" scenarios — a runaway UPDATE, a
-cascading DELETE, a stuck insert loop, a mixed multi-statement session, an
-out-of-band edit racing an undo, a statement backstep can't safely capture —
-run end to end against a real, throwaway Postgres through the actual proxy,
-interceptor, journal, and Postgres adapter. Each scenario is graded on how
-well backstep recovered, not just whether the code ran:
-
-- **full** — the database matches the pre-damage state exactly.
-- **partial** — reverting changed something but not everything (e.g.
-  `cascading_delete`: the parent row restores, but Postgres's own
-  `ON DELETE CASCADE` destroyed the children in the same statement backstep
-  captured, before backstep ever saw them individually — a real limit of
-  statement-level capture, honestly reported rather than hidden).
-- **none** — reverting made no difference.
-- **refused (correct)** — backstep detected drift or an uncapturable
-  statement and declined to touch anything, rather than guessing. For
-  `partial_drift` and `unparseable_sql`, refusing *is* the pass condition —
-  reverting anyway would be the failure.
-
-Run it yourself with `uv run backstep eval` — requires Docker, or set
-`BACKSTEP_TEST_PG_DSN` to point at an already-running Postgres instead (see
-[Postgres-backed tests and `backstep eval`](#postgres-backed-tests-and-backstep-eval)
-above). Latest run:
-
-| Scenario | Class | Recovered | Time to recovery (ms) | Notes |
-|---|---|---|---|---|
-| wrong_where_update | R1 | full | 27.53 | reverted 1 action(s); state matches the pre-damage baseline |
-| cascading_delete | R2 | partial | 37.46 | reverted 1 action(s), but the result doesn't fully match the pre-damage baseline |
-| runaway_insert_loop | R1 | full | 2720.05 | reverted 200 action(s); state matches the pre-damage baseline |
-| mixed_session | R2 | full | 86.73 | reverted 5 action(s); state matches the pre-damage baseline |
-| partial_drift | R1 | refused (correct) | 2.93 | drift detected — an out-of-band edit changed the row after backstep's copy of it, so an automatic revert would have clobbered that change |
-| unparseable_sql | R2 | refused (correct) | 17.28 | capture declined: unparseable statement — a CTE-heavy statement `capture()` can't safely rewrite into a standalone SELECT |
-
-**3 full, 1 partial, 0 none, 2 correctly refused — out of 6 scenarios.**
-Full machine-readable output: [`eval_results.json`](eval_results.json).
+MIT. See [LICENSE](LICENSE).
