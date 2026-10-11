@@ -334,9 +334,9 @@ uv run backstep eval 2>&1 | tee /tmp_or_scratchpad/before.txt
 
 Check `proxy.py`'s `_intercept_call_tool` (~`proxy.py:341-352` per the exploration) which also wraps `await adapter.capture(...)` in its own `try/except Exception as exc: note = f"capture_failed: {exc}"` — confirm this doesn't itself print anything beyond building the `note` string (read the surrounding code to be sure there's no `traceback.print_exc()` or unguarded re-raise nearby).
 
-- [x] **Step 4: Make the eval notes column render "capture declined: unparseable statement"**
+- [ ] **Step 4: Make the eval notes column render "capture declined: unparseable statement"**
 
-  > **Note:** `_display_refusal_reason` (`5607a36`) translates on outcome alone: any `refused_no_pre_state` in an `expect_refusal` scenario is labelled "capture declined: unparseable statement"; it does not check for a `capture_failed:` journal note.
+  > **Note:** Done differently: `_display_refusal_reason` (`5607a36`) translates on outcome alone: any `refused_no_pre_state` in an `expect_refusal` scenario is labelled "capture declined: unparseable statement"; it does not check for a `capture_failed:` journal note.
 
 Trace how `note`/`capture_failed` ends up in `ScenarioResult.notes` for this scenario — via `_grade` in `eval.py:124-154` (read the full function) and whatever assembles `ScenarioResult` from journal entries/reports. The task wants the **eval table's notes column** specifically to show `capture declined: unparseable statement` for this scenario, not the raw `capture_failed: <exception message>` text. Two implementation options depending on what's actually there after reading the code:
   - If `_grade`/the result-builder already surfaces the journal's `error`/note field verbatim, add a small translation step: when the refusal reason traces back to a capture failure (`refused_no_pre_state` with a `capture_failed:` prefixed note, per `journal.begin_action`'s `note` param docs), rewrite the displayed note to `"capture declined: unparseable statement"` specifically for scenarios where `expect_refusal=True` and outcome is `refused_no_pre_state`.
@@ -358,9 +358,9 @@ def eval_command(
 ```
 Match whatever logging setup convention already exists elsewhere in `cli.py` (check if `serve`/other commands configure logging already — reuse that pattern rather than inventing a second one). The effect required: with `--verbose`, the DEBUG-level `exc_info=True` log from Step 2 becomes visible (full traceback restored); without it, default output stays traceback-free.
 
-- [x] **Step 6: Test — default output has no traceback text**
+- [ ] **Step 6: Test — default output has no traceback text**
 
-  > **Note:** Both tests are `requires_postgres` and were skipped when `5607a36` was committed (no Docker). The notes-column assertion was width-fragile and the tests overwrote `eval_results.json`; both fixed in `3026215` (wide console, `--out tmp_path`).
+  > **Note:** Not verifiable as done at `5607a36`: both tests are `requires_postgres` and were skipped when `5607a36` was committed (no Docker). The notes-column assertion was width-fragile and the tests overwrote `eval_results.json`; both fixed in `3026215` (wide console, `--out tmp_path`).
 
 ```python
 def test_eval_unparseable_sql_no_traceback_by_default(...):
@@ -717,9 +717,9 @@ codec used identically on write and read, and in Postgres fingerprinting."
 
 - [x] **Step 1: Read `tests/adapters/test_postgres.py` and `tests/conftest.py` in full** to confirm exact fixture usage, connection helper patterns, and how existing tests build/tear down a test table.
 
-- [x] **Step 2: Write the schema + seed helper**
+- [ ] **Step 2: Write the schema + seed helper**
 
-  > **Note:** As committed in `8045a07`, the JSONB seed values were Python dicts, which asyncpg rejects (no jsonb codec), so the fixture errored for all 25 tests. Fixed in `3026215` by seeding JSON text.
+  > **Note:** Not done correctly at `8045a07`: the JSONB seed values were Python dicts, which asyncpg rejects (no jsonb codec), so the fixture errored for all 25 tests. Fixed in `3026215` by seeding JSON text.
 
 ```python
 CREATE_TABLE_SQL = """
@@ -805,9 +805,9 @@ async def test_fingerprint_stable_under_no_change(postgres_dsn, column):
 ```
 Per Global Constraints: if this fails for ANY column, STOP and fix `codec.py`/`_fingerprint_state` before writing requirement (iii) or continuing to Task 2c. Do not comment out or skip a failing case.
 
-- [x] **Step 5: Fingerprint sensitivity test (requirement iii)**
+- [ ] **Step 5: Fingerprint sensitivity test (requirement iii)**
 
-  > **Note:** With no jsonb codec, asyncpg returns `payload` as Postgres-normalized JSON text, not a dict; the key-reorder test compares those strings (comment corrected in `3026215`).
+  > **Note:** Done differently: with no jsonb codec, asyncpg returns `payload` as Postgres-normalized JSON text, not a dict; the key-reorder test compares those strings (comment corrected in `3026215`).
 
 One test per mutation type, each asserting `current_fingerprint(...)` differs from the pre-mutation `post_fingerprint` EXCEPT the jsonb key-reorder case, which must NOT differ:
 
