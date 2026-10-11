@@ -18,6 +18,7 @@ test.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import AsyncIterator
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -84,8 +85,10 @@ def _row1_values() -> list[object]:
         date(2024, 1, 1),
         _ROW1_EXT_ID,
         uuid4(),
-        {"b": 2, "a": 1},
-        {"z": True},
+        # asyncpg has no jsonb codec by default (nor does PostgresAdapter),
+        # so JSONB parameters go in as JSON text.
+        json.dumps({"b": 2, "a": 1}),
+        json.dumps({"z": True}),
         ["x", "y"],
         ["p"],
         [3, 1, 2],
@@ -110,7 +113,7 @@ def _row2_values() -> list[object]:
         None,
         _ROW2_EXT_ID,
         None,
-        {},
+        json.dumps({}),
         None,
         [],
         None,
@@ -387,9 +390,11 @@ async def test_fingerprint_insensitive_to_jsonb_key_reorder(
     payload_after = row["payload"]
 
     # Postgres's jsonb type normalizes key order on storage (parsed binary
-    # form, not text) — confirm asyncpg returns the same Python dict for
-    # both before asserting anything about the fingerprint, so a failure
-    # here points at codec.py's dict encoding rather than jsonb itself.
+    # form, not text). With no jsonb codec registered (true of this pool and
+    # of PostgresAdapter), asyncpg returns that normalized form as JSON text,
+    # so confirm both reads give the same string before asserting anything
+    # about the fingerprint — a failure here points at jsonb itself rather
+    # than at codec.py.
     assert payload_before == payload_after
 
     assert fp_before == fp_after

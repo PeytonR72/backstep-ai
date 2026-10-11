@@ -8,8 +8,10 @@ import os
 from pathlib import Path
 
 import pytest
+from rich.console import Console
 from typer.testing import CliRunner
 
+from backstep import cli
 from backstep.cli import app
 from backstep.journal import Journal
 
@@ -247,15 +249,25 @@ def test_doctor_reports_postgres_test_mode(tmp_path: Path, monkeypatch: pytest.M
 # These need real Postgres (backstep eval runs the actual scenarios), so
 # they're skipped rather than failed when neither BACKSTEP_TEST_PG_DSN nor a
 # working Docker daemon is available (see tests/pg_testing.py).
+#
+# Each run writes its JSON report to tmp_path via --out, so the committed
+# eval_results.json is never rewritten by the test suite. Tests that assert on
+# the eval table's text use `wide_console` so Rich can't wrap the notes column
+# mid-phrase.
+
+
+@pytest.fixture
+def wide_console(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "console", Console(width=250))
 
 
 @requires_postgres
-def test_eval_unparseable_sql_no_traceback_by_default() -> None:
+def test_eval_unparseable_sql_no_traceback_by_default(tmp_path: Path, wide_console: None) -> None:
     """The unparseable_sql scenario's capture failure must not leak a raw
     traceback into the eval table's console output, and the notes column
     should show the clean, translated reason instead of the generic
     "no pre_state was captured" detail."""
-    result = runner.invoke(app, ["eval"])
+    result = runner.invoke(app, ["eval", "--out", str(tmp_path / "eval_results.json")])
 
     assert result.exit_code == 0
     assert "Traceback (most recent call last)" not in result.output
@@ -264,13 +276,15 @@ def test_eval_unparseable_sql_no_traceback_by_default() -> None:
 
 
 @requires_postgres
-def test_eval_verbose_restores_traceback(caplog: pytest.LogCaptureFixture) -> None:
+def test_eval_verbose_restores_traceback(caplog: pytest.LogCaptureFixture, tmp_path: Path) -> None:
     """--verbose raises the postgres adapter's log level to DEBUG, which
     restores the capture-failure traceback (attached via exc_info=True) to
     the log record, even though it still doesn't get printed to the console
     directly by rich."""
     with caplog.at_level(logging.DEBUG, logger="backstep.adapters.postgres"):
-        result = runner.invoke(app, ["eval", "--verbose"])
+        result = runner.invoke(
+            app, ["eval", "--verbose", "--out", str(tmp_path / "eval_results.json")]
+        )
 
     assert result.exit_code == 0
     assert any(
