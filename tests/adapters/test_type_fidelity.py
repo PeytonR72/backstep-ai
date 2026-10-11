@@ -127,25 +127,6 @@ def _row2_values() -> list[object]:
 
 
 @pytest.fixture
-async def pool(postgres_dsn: str) -> AsyncIterator[asyncpg.Pool]:
-    p = await asyncpg.create_pool(dsn=postgres_dsn)
-    assert p is not None
-    try:
-        yield p
-    finally:
-        await p.close()
-
-
-@pytest.fixture
-async def adapter(postgres_dsn: str) -> AsyncIterator[PostgresAdapter]:
-    a = await PostgresAdapter.connect(postgres_dsn)
-    try:
-        yield a
-    finally:
-        await a.close()
-
-
-@pytest.fixture
 async def type_fidelity_table(pool: asyncpg.Pool) -> AsyncIterator[None]:
     async with pool.acquire() as conn:
         await conn.execute("DROP TABLE IF EXISTS type_fidelity")

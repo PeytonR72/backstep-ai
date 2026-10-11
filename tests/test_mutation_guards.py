@@ -33,7 +33,6 @@ Two non-obvious choices:
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -71,16 +70,6 @@ async def _run_single_scenario(
     finally:
         await adapter.close()
         await journal.close()
-
-
-@pytest.fixture
-async def pool(postgres_dsn: str) -> AsyncIterator[asyncpg.Pool]:
-    p = await asyncpg.create_pool(dsn=postgres_dsn)
-    assert p is not None
-    try:
-        yield p
-    finally:
-        await p.close()
 
 
 async def test_partial_drift_guard_disabling_drift_check_clobbers_edit(

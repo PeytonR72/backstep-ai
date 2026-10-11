@@ -17,6 +17,7 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
+from backstep.adapters.postgres import PostgresAdapter
 from backstep.eval import TEST_PG_DSN_ENV_VAR, with_search_path
 from tests.pg_testing import _docker_available
 
@@ -75,3 +76,28 @@ async def postgres_dsn(_postgres_base_dsn: str) -> AsyncIterator[str]:
         async with admin_pool.acquire() as conn:
             await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         await admin_pool.close()
+
+
+@pytest.fixture
+async def pool(postgres_dsn: str) -> AsyncIterator[asyncpg.Pool]:
+    """A plain asyncpg pool on this test's schema, for seeding and inspecting rows.
+
+    Modules that need seeded tables override this by requesting `pool`
+    themselves (pytest resolves that to this fixture) and seeding through it.
+    """
+    p = await asyncpg.create_pool(dsn=postgres_dsn)
+    assert p is not None
+    try:
+        yield p
+    finally:
+        await p.close()
+
+
+@pytest.fixture
+async def adapter(postgres_dsn: str) -> AsyncIterator[PostgresAdapter]:
+    """A `PostgresAdapter` on this test's schema, with default settings."""
+    a = await PostgresAdapter.connect(postgres_dsn)
+    try:
+        yield a
+    finally:
+        await a.close()

@@ -52,30 +52,14 @@ PERMANENT_REFUSALS = INVARIANT_OUTCOMES - TRANSIENT_REFUSALS - STATUS_GUARD_REFU
 
 
 @pytest.fixture
-async def pool(postgres_dsn: str) -> AsyncIterator[Any]:
-    """A pool on a schema seeded with `documents` (PK) and `logs_no_pk` (no PK)."""
-    p = await asyncpg.create_pool(dsn=postgres_dsn)
-    assert p is not None
-    try:
-        async with p.acquire() as conn:
-            await conn.execute(
-                "CREATE TABLE documents (id INTEGER PRIMARY KEY, status TEXT NOT NULL)"
-            )
-            await conn.execute("INSERT INTO documents (id, status) VALUES (1, 'draft')")
-            await conn.execute("CREATE TABLE logs_no_pk (message TEXT NOT NULL)")
-            await conn.execute("INSERT INTO logs_no_pk (message) VALUES ('hello')")
-        yield p
-    finally:
-        await p.close()
-
-
-@pytest.fixture
-async def adapter(postgres_dsn: str) -> AsyncIterator[PostgresAdapter]:
-    a = await PostgresAdapter.connect(postgres_dsn)
-    try:
-        yield a
-    finally:
-        await a.close()
+async def pool(pool: asyncpg.Pool) -> asyncpg.Pool:
+    """The conftest pool, on a schema seeded with `documents` (PK) and `logs_no_pk` (no PK)."""
+    async with pool.acquire() as conn:
+        await conn.execute("CREATE TABLE documents (id INTEGER PRIMARY KEY, status TEXT NOT NULL)")
+        await conn.execute("INSERT INTO documents (id, status) VALUES (1, 'draft')")
+        await conn.execute("CREATE TABLE logs_no_pk (message TEXT NOT NULL)")
+        await conn.execute("INSERT INTO logs_no_pk (message) VALUES ('hello')")
+    return pool
 
 
 @pytest.fixture

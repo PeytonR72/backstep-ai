@@ -9,12 +9,10 @@ from typing import Any
 
 os.environ.setdefault("TESTCONTAINERS_RYUK_DISABLED", "true")
 
-import asyncpg
 import pytest
 
 from backstep.adapters.base import AdapterRegistry
 from backstep.adapters.base import RevertResult as AdapterRevertResult
-from backstep.adapters.postgres import PostgresAdapter
 from backstep.journal import ActionRecord, Journal
 from backstep.reverter import REFUSAL_OUTCOMES, Reverter
 from tests.pg_testing import requires_postgres
@@ -238,23 +236,6 @@ async def test_revert_session_aborts_on_first_failure_and_reports_still_changed(
 
 @requires_postgres
 class TestPostgresDrift:
-    @pytest.fixture
-    async def pool(self, postgres_dsn: str) -> AsyncIterator[Any]:
-        p = await asyncpg.create_pool(dsn=postgres_dsn)
-        assert p is not None
-        try:
-            yield p
-        finally:
-            await p.close()
-
-    @pytest.fixture
-    async def adapter(self, postgres_dsn: str) -> AsyncIterator[Any]:
-        a = await PostgresAdapter.connect(postgres_dsn)
-        try:
-            yield a
-        finally:
-            await a.close()
-
     @pytest.fixture
     async def documents(self, pool: Any) -> AsyncIterator[None]:
         async with pool.acquire() as conn:

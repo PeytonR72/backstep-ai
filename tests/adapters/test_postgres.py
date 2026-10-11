@@ -52,16 +52,6 @@ def _make_entry(
 
 
 @pytest.fixture
-async def pool(postgres_dsn: str) -> AsyncIterator[asyncpg.Pool]:
-    p = await asyncpg.create_pool(dsn=postgres_dsn)
-    assert p is not None
-    try:
-        yield p
-    finally:
-        await p.close()
-
-
-@pytest.fixture
 async def adapter(postgres_dsn: str) -> AsyncIterator[PostgresAdapter]:
     a = await PostgresAdapter.connect(postgres_dsn, max_captured_rows=5)
     try:
