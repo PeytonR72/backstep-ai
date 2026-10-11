@@ -229,6 +229,46 @@ max_captured_rows = 1000
     assert "journal" in result.output.lower()
 
 
+def test_doctor_flags_unfilled_placeholders_without_spawning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A server copied from backstep.example.toml with `<...>` placeholders left
+    in: fail with a pointer at each placeholder instead of spawning it (on
+    Windows, cmd.exe parses `<your-project-ref>` as a redirect and the spawn
+    dies with an opaque TaskGroup error)."""
+    from backstep import doctor
+
+    async def _must_not_spawn(server: object) -> list[str]:
+        raise AssertionError("server with unfilled placeholders was spawned")
+
+    monkeypatch.setattr(doctor, "_list_server_tools", _must_not_spawn)
+    journal_path = (tmp_path / "journal.db").as_posix()
+    config_path = tmp_path / "backstep.toml"
+    config_path.write_text(
+        f"""
+journal_path = "{journal_path}"
+
+[[servers]]
+name = "supabase"
+command = "npx"
+args = ["-y", "@supabase/mcp-server-supabase@latest", "--project-ref=<your-project-ref>"]
+
+[servers.env]
+SUPABASE_ACCESS_TOKEN = "<your-access-token>"
+""",
+        encoding="utf-8",
+    )
+
+    report = asyncio.run(doctor.run_doctor(config_path))
+
+    [check] = [c for c in report.checks if c.name == "server:supabase"]
+    assert check.status == "failed"
+    assert "<your-project-ref>" in check.detail
+    assert "SUPABASE_ACCESS_TOKEN" in check.detail
+    assert "<your-access-token>" not in check.detail  # env values may be secrets
+    assert str(config_path) in check.detail
+
+
 def test_doctor_reports_postgres_test_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from backstep.eval import TEST_PG_DSN_ENV_VAR
 

@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -43,6 +44,9 @@ CONNECT_TIMEOUT_SECONDS = 15.0
 CheckStatus = Literal["passed", "failed", "skipped"]
 
 _DEFAULT_JOURNAL_PATH: str = BackstepConfig.model_fields["journal_path"].default
+
+#: `<your-project-ref>`-style tokens left over from backstep.example.toml.
+_PLACEHOLDER_RE = re.compile(r"<[A-Za-z][A-Za-z0-9_-]*>")
 
 
 @dataclass(frozen=True)
@@ -82,7 +86,31 @@ async def _list_server_tools(server: UpstreamServer) -> list[str]:
         return [tool.name for tool in result.tools]
 
 
-async def _check_server(server: UpstreamServer) -> tuple[DoctorCheck, list[str]]:
+def _unfilled_placeholders(server: UpstreamServer) -> list[str]:
+    """Placeholders still present in `server`'s command/args, plus the names
+    of env vars whose values contain one (env values are named, not echoed,
+    since a filled-in one is usually a secret)."""
+    found = [m for value in (server.command, *server.args) for m in _PLACEHOLDER_RE.findall(value)]
+    found += [
+        f"env {key}" for key, value in (server.env or {}).items() if _PLACEHOLDER_RE.search(value)
+    ]
+    return found
+
+
+async def _check_server(
+    server: UpstreamServer, config_path: str | Path
+) -> tuple[DoctorCheck, list[str]]:
+    # Checked before spawning: on Windows cmd.exe parses `<...>` as a
+    # redirect, so the spawn fails with an opaque TaskGroup error instead.
+    placeholders = _unfilled_placeholders(server)
+    if placeholders:
+        check = DoctorCheck(
+            f"server:{server.name}",
+            "failed",
+            f"unfilled placeholder(s) in {config_path}: {', '.join(placeholders)}; "
+            "replace them with your own values",
+        )
+        return check, []
     try:
         tool_names = await asyncio.wait_for(
             _list_server_tools(server), timeout=CONNECT_TIMEOUT_SECONDS
@@ -219,7 +247,7 @@ async def run_doctor(config_path: str | Path) -> DoctorReport:
         checks.append(DoctorCheck("unclassified tools", "skipped", "no config loaded"))
     else:
         for server in config.servers:
-            check, tool_names = await _check_server(server)
+            check, tool_names = await _check_server(server, config_path)
             checks.append(check)
             configured_names = {tool.name for tool in server.tools}
             for tool_name in tool_names:
