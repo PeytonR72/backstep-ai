@@ -96,12 +96,12 @@ above). Latest run:
 
 | Scenario | Class | Recovered | Time to recovery (ms) | Notes |
 |---|---|---|---|---|
-| wrong_where_update | R1 | full | 7.80 | reverted 1 action(s); state matches the pre-damage baseline |
-| cascading_delete | R2 | partial | 12.46 | reverted 1 action(s), but the result doesn't fully match the pre-damage baseline |
-| runaway_insert_loop | R1 | full | 1083.73 | reverted 200 action(s); state matches the pre-damage baseline |
-| mixed_session | R2 | full | 31.99 | reverted 5 action(s); state matches the pre-damage baseline |
-| partial_drift | R1 | refused (correct) | 1.25 | drift detected — an out-of-band edit changed the row after backstep's copy of it, so an automatic revert would have clobbered that change |
-| unparseable_sql | R2 | refused (correct) | 5.36 | no pre_state was captured — a CTE-heavy statement `capture()` can't safely rewrite into a standalone SELECT |
+| wrong_where_update | R1 | full | 27.53 | reverted 1 action(s); state matches the pre-damage baseline |
+| cascading_delete | R2 | partial | 37.46 | reverted 1 action(s), but the result doesn't fully match the pre-damage baseline |
+| runaway_insert_loop | R1 | full | 2720.05 | reverted 200 action(s); state matches the pre-damage baseline |
+| mixed_session | R2 | full | 86.73 | reverted 5 action(s); state matches the pre-damage baseline |
+| partial_drift | R1 | refused (correct) | 2.93 | drift detected — an out-of-band edit changed the row after backstep's copy of it, so an automatic revert would have clobbered that change |
+| unparseable_sql | R2 | refused (correct) | 17.28 | capture declined: unparseable statement — a CTE-heavy statement `capture()` can't safely rewrite into a standalone SELECT |
 
 **3 full, 1 partial, 0 none, 2 correctly refused — out of 6 scenarios.**
 Full machine-readable output: [`eval_results.json`](eval_results.json).

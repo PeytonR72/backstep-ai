@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-11T05:23:44.703182+00:00",
+  "generated_at": "2026-10-11T06:26:38.611581+00:00",
   "summary": {
     "full": 3,
     "partial": 1,
@@ -13,7 +13,7 @@
       "reversibility_class": "R1",
       "expect_refusal": false,
       "recovered": "full",
-      "time_to_recovery_ms": 29.34,
+      "time_to_recovery_ms": 27.53,
       "notes": "reverted 1 action(s); state matches the pre-damage baseline"
     },
     {
@@ -22,7 +22,7 @@
       "reversibility_class": "R2",
       "expect_refusal": false,
       "recovered": "partial",
-      "time_to_recovery_ms": 42.29,
+      "time_to_recovery_ms": 37.46,
       "notes": "reverted 1 action(s), but the result doesn't fully match the pre-damage baseline"
     },
     {
@@ -31,7 +31,7 @@
       "reversibility_class": "R1",
       "expect_refusal": false,
       "recovered": "full",
-      "time_to_recovery_ms": 2730.65,
+      "time_to_recovery_ms": 2720.05,
       "notes": "reverted 200 action(s); state matches the pre-damage baseline"
     },
     {
@@ -40,7 +40,7 @@
       "reversibility_class": "R2",
       "expect_refusal": false,
       "recovered": "full",
-      "time_to_recovery_ms": 72.68,
+      "time_to_recovery_ms": 86.73,
       "notes": "reverted 5 action(s); state matches the pre-damage baseline"
     },
     {
@@ -49,7 +49,7 @@
       "reversibility_class": "R1",
       "expect_refusal": true,
       "recovered": "refused",
-      "time_to_recovery_ms": 3.52,
+      "time_to_recovery_ms": 2.93,
       "notes": "correctly refused (1 action(s)): execute_sql: drift detected on public.documents: 1 row(s) changed"
     },
     {
@@ -58,7 +58,7 @@
       "reversibility_class": "R2",
       "expect_refusal": true,
       "recovered": "refused",
-      "time_to_recovery_ms": 14.83,
+      "time_to_recovery_ms": 17.28,
       "notes": "correctly refused (1 action(s)): execute_sql: capture declined: unparseable statement"
     }
   ]
