@@ -7,7 +7,7 @@ this file drives an action through several transitions and asserts status,
 error and revert_note after each step, not only at the end.
 
 The invariant test at the bottom partitions every refusal in
-`REFUSAL_OUTCOMES` into three classes:
+`REFUSAL_OUTCOMES`, plus `"failed"`, into three classes:
 
   - TRANSIENT (drift): the condition can go away or be forced past, so status
     must stay "committed" to keep a retry possible.
@@ -15,7 +15,9 @@ The invariant test at the bottom partitions every refusal in
     the current status, so it must leave that status exactly as it found it —
     an already-reverted action must not be rewritten as "unrevertable".
   - PERMANENT (everything else): no retry can ever succeed, so the action is
-    marked "unrevertable".
+    marked "unrevertable". This includes `"failed"` (the adapter returned
+    `ok=False`), which isn't in `REFUSAL_OUTCOMES` because `backstep eval`
+    must not grade it as a correct refusal, but has the same status contract.
 
 PERMANENT is computed by subtraction, so a refusal reason newly added to
 `reverter.py` defaults to it and this file goes red unless that's right —
@@ -45,7 +47,8 @@ _DELETE_NO_PK_SQL = "DELETE FROM logs_no_pk WHERE message = 'hello'"
 
 TRANSIENT_REFUSALS = frozenset({"refused_drift"})
 STATUS_GUARD_REFUSALS = frozenset({"refused_not_committed", "refused_already_reverted"})
-PERMANENT_REFUSALS = REFUSAL_OUTCOMES - TRANSIENT_REFUSALS - STATUS_GUARD_REFUSALS
+INVARIANT_OUTCOMES: frozenset[RevertOutcome] = REFUSAL_OUTCOMES | {"failed"}
+PERMANENT_REFUSALS = INVARIANT_OUTCOMES - TRANSIENT_REFUSALS - STATUS_GUARD_REFUSALS
 
 
 @pytest.fixture
@@ -366,7 +369,12 @@ class _Refusal:
 
 
 async def _drive_to_refusal(
-    reason: RevertOutcome, journal: Journal, adapter: PostgresAdapter, reverter: Reverter, pool: Any
+    reason: RevertOutcome,
+    journal: Journal,
+    adapter: PostgresAdapter,
+    reverter: Reverter,
+    pool: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> _Refusal:
     pre_state = {"kind": "pg_rows", "data": {"op": "update"}}
     if reason == "refused_drift":
@@ -397,6 +405,13 @@ async def _drive_to_refusal(
         )
     elif reason == "refused_no_primary_key":
         action_id = await _commit_delete_without_pk(journal, adapter, pool)
+    elif reason == "failed":
+        action_id = await _commit_update(journal, adapter, pool)
+
+        async def _not_ok(entry: ActionRecord) -> AdapterRevertResult:
+            return AdapterRevertResult(ok=False, detail="stub adapter declined")
+
+        monkeypatch.setattr(adapter, "revert", _not_ok)
     else:
         pytest.fail(f"no setup branch for refusal {reason!r}; add one to _drive_to_refusal")
 
@@ -409,20 +424,22 @@ def test_refusal_classes_partition_refusal_outcomes() -> None:
     assert TRANSIENT_REFUSALS <= REFUSAL_OUTCOMES
     assert STATUS_GUARD_REFUSALS <= REFUSAL_OUTCOMES
     assert not TRANSIENT_REFUSALS & STATUS_GUARD_REFUSALS
-    assert TRANSIENT_REFUSALS | STATUS_GUARD_REFUSALS | PERMANENT_REFUSALS == REFUSAL_OUTCOMES
+    assert TRANSIENT_REFUSALS | STATUS_GUARD_REFUSALS | PERMANENT_REFUSALS == INVARIANT_OUTCOMES
+    assert "failed" in PERMANENT_REFUSALS
 
 
 @requires_postgres
-@pytest.mark.parametrize("refusal_reason", sorted(REFUSAL_OUTCOMES))
+@pytest.mark.parametrize("refusal_reason", sorted(INVARIANT_OUTCOMES))
 async def test_refusal_status_invariant(
     refusal_reason: RevertOutcome,
     journal: Journal,
     adapter: PostgresAdapter,
     reverter: Reverter,
     pool: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """TRANSIENT -> 'committed'; STATUS_GUARD -> unchanged; PERMANENT -> 'unrevertable'."""
-    refusal = await _drive_to_refusal(refusal_reason, journal, adapter, reverter, pool)
+    refusal = await _drive_to_refusal(refusal_reason, journal, adapter, reverter, pool, monkeypatch)
 
     # First: did the setup actually hit the branch under test?
     assert refusal.result.outcome == refusal_reason, refusal.result.detail

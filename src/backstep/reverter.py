@@ -49,8 +49,11 @@ RevertOutcome = Literal[
     "failed",
 ]
 
-#: Outcomes where nothing was mutated back — either by design (a refusal) or
-#: because the attempt itself failed.
+#: Outcomes where the reverter declined before asking the adapter to revert,
+#: so nothing was mutated back. `"failed"` (the adapter was asked and returned
+#: `ok=False`) is deliberately excluded: `backstep eval` grades members of this
+#: set as a correct refusal, and a failed revert must not pass as one. It is
+#: still permanent, though — `_revert_entry` marks it unrevertable.
 REFUSAL_OUTCOMES: frozenset[RevertOutcome] = frozenset(
     {
         "refused_not_committed",
