@@ -50,7 +50,7 @@
 - Consumes: `BackstepConfig` schema from `src/backstep/config.py` (read the file as-is; do not modify config.py in this task).
 - Produces: nothing consumed by later tasks in this plan, but Task 1b's tests reference this file's existence/content as the "valid config" fixture case.
 
-- [ ] **Step 1: Write `backstep.example.toml`**
+- [x] **Step 1: Write `backstep.example.toml`**
 
 Base it on the real `BackstepConfig`/`UpstreamServer`/`ToolPolicy`/`PostgresAdapterConfig` fields read from `src/backstep/config.py`. One upstream Supabase/Postgres server, `[adapters.postgres]` with a `dsn` key, `unknown_tool_behavior = "warn"`, and 4 `ToolPolicy` entries covering R0/R1/R2/R4 with a one-line comment each explaining the risk class (definitions live in `bootstrap.py:33-39`: R0 read-only, R1 fully reversible, R2 reversible with loss, R3 compensable-only, R4 irreversible — use R0/R1/R2/R4 per the task, skipping R3 is fine since only 3-4 entries are asked for):
 
@@ -119,7 +119,7 @@ uv run python -c "from backstep.config import load_config; print(load_config('ba
 ```
 Expected: prints a `BackstepConfig(...)` repr with no exception.
 
-- [ ] **Step 2: Reference it from the README quickstart**
+- [x] **Step 2: Reference it from the README quickstart**
 
 Add a new `## Quickstart` section to `README.md` immediately after the title/description (before `## Development`):
 
@@ -132,7 +132,7 @@ Add a new `## Quickstart` section to `README.md` immediately after the title/des
    connectivity before pointing a real MCP client at `backstep serve`.
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backstep.example.toml README.md
@@ -152,9 +152,9 @@ git commit -m "docs: add backstep.example.toml and README quickstart"
 - Consumes: `load_config` from `backstep.config` (unchanged signature), `Journal` from `backstep.journal`, `PostgresAdapter.connect`/`resolve_dsn` from `backstep.adapters.postgres`, `TEST_PG_DSN_ENV_VAR` from `backstep.eval`.
 - Produces: `DoctorCheck` gets a third state. Read `doctor.py` in full before editing — the exploration only summarized it; confirm exact current signatures of `_check_server`, `_check_postgres_adapter`, `_check_journal`, `_eval_postgres_mode_check` before changing their call sites.
 
-- [ ] **Step 1: Read `src/backstep/doctor.py` in full** to get exact current code (the plan's map is a summary, not a substitute for reading before editing).
+- [x] **Step 1: Read `src/backstep/doctor.py` in full** to get exact current code (the plan's map is a summary, not a substitute for reading before editing).
 
-- [ ] **Step 2: Add a `status` field to `DoctorCheck` replacing/extending the boolean `ok`**
+- [x] **Step 2: Add a `status` field to `DoctorCheck` replacing/extending the boolean `ok`**
 
 Change `DoctorCheck` from `(name, ok, detail)` to carry a tri-state status while staying backward compatible with `.ok`:
 
@@ -177,7 +177,7 @@ Update `DoctorReport.ok` (`doctor.py:30-50` area) to: `all(check.status != "fail
 
 Update every existing call site in `doctor.py` that constructs `DoctorCheck(name, True/False, detail)` to use `DoctorCheck(name, "passed"/"failed", detail)` instead (grep for `DoctorCheck(` inside `doctor.py`).
 
-- [ ] **Step 3: Rewrite `run_doctor` to degrade on missing/unparseable config**
+- [x] **Step 3: Rewrite `run_doctor` to degrade on missing/unparseable config**
 
 Replace the current try/except-around-`load_config`-then-continue-anyway logic (verify from the full read in Step 1 whether checks after config currently even run when config load fails — the exploration notes it *is* wrapped in try/except but the report says "each check... must still run," so confirm and fix if any check currently short-circuits). Target structure:
 
@@ -234,9 +234,9 @@ Key semantic decisions this codifies (match task requirements exactly):
 
 Adjust each helper's signature as needed (e.g., `_check_journal` taking `BackstepConfig | None`) — read their current bodies in Step 1 before changing signatures, and update every call site.
 
-- [ ] **Step 4: Update `_print_doctor_report` in `cli.py:595-621`** to render the three states distinctly (e.g. green "PASSED", red "FAILED", yellow "SKIPPED") and keep the exit-code logic (`cli.py`'s doctor command should `raise typer.Exit(code=1)` iff `report.ok` is `False`, i.e. iff any check has `status == "failed"` — unchanged semantics via the `.ok` property, just verify the CLI reads `.ok` and not raw booleans anywhere).
+- [x] **Step 4: Update `_print_doctor_report` in `cli.py:595-621`** to render the three states distinctly (e.g. green "PASSED", red "FAILED", yellow "SKIPPED") and keep the exit-code logic (`cli.py`'s doctor command should `raise typer.Exit(code=1)` iff `report.ok` is `False`, i.e. iff any check has `status == "failed"` — unchanged semantics via the `.ok` property, just verify the CLI reads `.ok` and not raw booleans anywhere).
 
-- [ ] **Step 5: Write CLI tests for the three required cases** in `tests/test_cli.py` (append to the existing doctor test block near `test_doctor_fails_on_unparseable_config`):
+- [x] **Step 5: Write CLI tests for the three required cases** in `tests/test_cli.py` (append to the existing doctor test block near `test_doctor_fails_on_unparseable_config`):
 
 ```python
 def test_doctor_no_config_present(tmp_path, ...):
@@ -272,14 +272,14 @@ def test_doctor_valid_config(tmp_path, ...):
 ```
 Match the actual fixture/CLI-invocation pattern already used in `tests/test_cli.py` for `test_doctor_fails_on_unparseable_config` (read that test first, reuse its `runner`/fixture setup rather than inventing a new one).
 
-- [ ] **Step 6: Run the new tests**
+- [x] **Step 6: Run the new tests**
 
 ```bash
 uv run pytest tests/test_cli.py -k doctor -v
 ```
 Expected: all doctor tests PASS, none skipped.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/backstep/doctor.py src/backstep/cli.py tests/test_cli.py
@@ -300,7 +300,7 @@ git commit -m "fix: backstep doctor degrades gracefully on missing/malformed con
 - Consumes: `UnparseableSqlScenario` from `tests/scenarios/unparseable_sql.py` (dev-only, read it first — confirm what SQL it actually issues and what exception it triggers; the exploration found capture already returns `None` via a caught `Exception` inside `postgres.py:218-227`, with `logger.exception(...)` at ERROR level, not DEBUG).
 - Produces: `capture()`'s behavior on this path (return `None` on any exception) is UNCHANGED by this task — only the **logging level** (ERROR → DEBUG per the task) and the **downstream notes-column text** change. Do not alter control flow that other tasks (2, 3) depend on.
 
-- [ ] **Step 1: Read `tests/scenarios/unparseable_sql.py` and confirm the actual failure path**
+- [x] **Step 1: Read `tests/scenarios/unparseable_sql.py` and confirm the actual failure path**
 
 The exploration agent already traced this: the scenario's CTE-heavy UPDATE parses fine under sqlglot (so the `postgres.py:206-210` parse guard is NOT what fires), but the runtime `SELECT`-rewrite (`_capture_rows`, `postgres.py:328-345`) against Postgres raises `asyncpg.exceptions.UndefinedTableError` (the CTE alias doesn't exist as a real table once rewritten as a bare SELECT), which is caught by the `try/except Exception` wrapping the dispatch in `capture()` at `postgres.py:218-227` — logged via `logger.exception(...)` (ERROR level, includes traceback) and returns `None`. Confirm this by actually running the scenario and observing today's output before changing anything:
 
@@ -309,7 +309,7 @@ uv run backstep eval 2>&1 | tee /tmp_or_scratchpad/before.txt
 ```
 (Use the scratchpad dir, not `/tmp`, per environment rules.) Confirm a traceback appears in stderr/stdout output.
 
-- [ ] **Step 2: Downgrade the log level and clarify the message at `postgres.py:218-227`**
+- [x] **Step 2: Downgrade the log level and clarify the message at `postgres.py:218-227`**
 
 ```python
         try:
@@ -330,18 +330,20 @@ uv run backstep eval 2>&1 | tee /tmp_or_scratchpad/before.txt
 ```
 `exc_info=True` still attaches the traceback to the DEBUG log record (so it's available with `-v`/DEBUG logging configured) without it appearing at default log levels or being printed to the console by Rich.
 
-- [ ] **Step 3: Verify nothing else prints a traceback for this path**
+- [x] **Step 3: Verify nothing else prints a traceback for this path**
 
 Check `proxy.py`'s `_intercept_call_tool` (~`proxy.py:341-352` per the exploration) which also wraps `await adapter.capture(...)` in its own `try/except Exception as exc: note = f"capture_failed: {exc}"` — confirm this doesn't itself print anything beyond building the `note` string (read the surrounding code to be sure there's no `traceback.print_exc()` or unguarded re-raise nearby).
 
-- [ ] **Step 4: Make the eval notes column render "capture declined: unparseable statement"**
+- [x] **Step 4: Make the eval notes column render "capture declined: unparseable statement"**
+
+  > **Note:** `_display_refusal_reason` (`5607a36`) translates on outcome alone: any `refused_no_pre_state` in an `expect_refusal` scenario is labelled "capture declined: unparseable statement"; it does not check for a `capture_failed:` journal note.
 
 Trace how `note`/`capture_failed` ends up in `ScenarioResult.notes` for this scenario — via `_grade` in `eval.py:124-154` (read the full function) and whatever assembles `ScenarioResult` from journal entries/reports. The task wants the **eval table's notes column** specifically to show `capture declined: unparseable statement` for this scenario, not the raw `capture_failed: <exception message>` text. Two implementation options depending on what's actually there after reading the code:
   - If `_grade`/the result-builder already surfaces the journal's `error`/note field verbatim, add a small translation step: when the refusal reason traces back to a capture failure (`refused_no_pre_state` with a `capture_failed:` prefixed note, per `journal.begin_action`'s `note` param docs), rewrite the displayed note to `"capture declined: unparseable statement"` specifically for scenarios where `expect_refusal=True` and outcome is `refused_no_pre_state`.
   - Prefer changing this at the point closest to where the note is already synthesized for display (likely inside `_grade` or the scenario-result assembly in `eval.py`) rather than changing the journal's stored `note` text, since the journal's stored text should stay accurate/generic for `backstep log`/`backstep show` (other CLI surfaces) — the task specifically asks for the **eval scenario row**, not the journal record.
   - Write the actual code after reading `eval.py` end to end; do not guess at variable names not yet confirmed.
 
-- [ ] **Step 5: Add `--verbose` to the `eval` Typer command**
+- [x] **Step 5: Add `--verbose` to the `eval` Typer command**
 
 ```python
 @app.command(name="eval")
@@ -356,7 +358,9 @@ def eval_command(
 ```
 Match whatever logging setup convention already exists elsewhere in `cli.py` (check if `serve`/other commands configure logging already — reuse that pattern rather than inventing a second one). The effect required: with `--verbose`, the DEBUG-level `exc_info=True` log from Step 2 becomes visible (full traceback restored); without it, default output stays traceback-free.
 
-- [ ] **Step 6: Test — default output has no traceback text**
+- [x] **Step 6: Test — default output has no traceback text**
+
+  > **Note:** Both tests are `requires_postgres` and were skipped when `5607a36` was committed (no Docker). The notes-column assertion was width-fragile and the tests overwrote `eval_results.json`; both fixed in `3026215` (wide console, `--out tmp_path`).
 
 ```python
 def test_eval_unparseable_sql_no_traceback_by_default(...):
@@ -374,13 +378,15 @@ Place in `tests/test_cli.py` (CLI-level) since it needs to invoke the actual `ev
 
 - [ ] **Step 7: Run**
 
+  > **Note:** Not verifiable as done at `5607a36`: the eval CLI tests skipped without Docker, and one failed once actually run (fixed in `3026215`). Both pass now and `backstep eval` shows the clean note (Task 5 run on `475a041`; re-run 2026-10-10).
+
 ```bash
 uv run pytest tests/test_cli.py tests/test_eval.py -v
 uv run backstep eval
 ```
 Confirm the eval table's `unparseable_sql` row now shows the clean note and the console has no traceback.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/backstep/adapters/postgres.py src/backstep/eval.py src/backstep/cli.py tests/
@@ -420,7 +426,7 @@ git commit -m "fix: eval no longer prints raw traceback for unparseable_sql; add
       """decode(json.loads(text))"""
   ```
 
-- [ ] **Step 1: Design the tag scheme and enumerate every type to cover**
+- [x] **Step 1: Design the tag scheme and enumerate every type to cover**
 
 Required minimum (from task spec): `Decimal`, `datetime`/`date`/`time` (with tz), `UUID`, `bytes`, `Interval` (Python `datetime.timedelta` — asyncpg maps Postgres `interval` to `datetime.timedelta`), and `asyncpg.Range` types if present (check `asyncpg` for `asyncpg.Range`/`asyncpg.types.Range` — used for `int4range`/`tstzrange`/etc. columns; confirm the actual import path via `python -c "import asyncpg; print(asyncpg.Range)"` before writing the encoder for it).
 
@@ -439,7 +445,7 @@ Tag format: `{"__t": "<type>", "v": <json-safe representation>}`. Exact encoding
 
 Collision guard: a dict that legitimately contains a key literally named `"__t"` from real application data would collide with this scheme. Given this is DB row data (column names as keys), a column literally named `__t` is exceedingly unlikely but note the limitation in a one-line comment rather than building elaborate escaping (YAGNI — the task doesn't ask for that level of robustness).
 
-- [ ] **Step 2: Write `src/backstep/codec.py`**
+- [x] **Step 2: Write `src/backstep/codec.py`**
 
 ```python
 """Reversible JSON codec for values the journal stores: DB-native Python
@@ -548,7 +554,7 @@ def loads(text: str) -> Any:
 
 Before finalizing, verify `asyncpg.Range`'s actual constructor signature and attribute names (`lower`, `upper`, `lower_inc`, `upper_inc`, `isempty` vs `is_empty`) against the installed `asyncpg` version — read the installed package source (`uv run python -c "import asyncpg, inspect; print(inspect.getsource(asyncpg.Range))"` or equivalent) rather than trusting this plan's guess, and fix field names accordingly.
 
-- [ ] **Step 3: Unit tests for the codec — `tests/test_codec.py`**
+- [x] **Step 3: Unit tests for the codec — `tests/test_codec.py`**
 
 ```python
 import asyncpg
@@ -616,14 +622,14 @@ def test_none_and_plain_json_types_passthrough():
     assert encode(True) is True
 ```
 
-- [ ] **Step 4: Run codec unit tests**
+- [x] **Step 4: Run codec unit tests**
 
 ```bash
 uv run pytest tests/test_codec.py -v
 ```
 Expected: all pass. Fix `codec.py` until they do — do not proceed to Step 5 with a failing codec.
 
-- [ ] **Step 5: Wire the codec into `journal.py`'s write path**
+- [x] **Step 5: Wire the codec into `journal.py`'s write path**
 
 Replace lines 171-172 (`begin_action`):
 ```python
@@ -647,7 +653,7 @@ Add `from backstep import codec` to the imports; remove the now-unused `import j
 
 Update the module docstring (`journal.py:1-8`) and the `begin_action` docstring note about `default=str` (lines 165-169) — both currently describe the old lossy behavior and must be corrected to describe the new reversible codec, or removed if redundant with `codec.py`'s own docstring.
 
-- [ ] **Step 6: Wire the codec into `journal.py`'s read path**
+- [x] **Step 6: Wire the codec into `journal.py`'s read path**
 
 Replace `_row_to_action` (lines 338-340):
 ```python
@@ -662,7 +668,7 @@ Replace `_row_to_action` (lines 338-340):
         post_state=None if row["post_state_json"] is None else codec.loads(row["post_state_json"]),
 ```
 
-- [ ] **Step 7: Wire the codec into Postgres fingerprinting (`postgres.py:144-164`)**
+- [x] **Step 7: Wire the codec into Postgres fingerprinting (`postgres.py:144-164`)**
 
 Replace the two `json.dumps(..., default=str)` calls in `_fingerprint_state`:
 ```python
@@ -680,14 +686,14 @@ Add `from backstep import codec` import; remove now-unused `import json` from `p
 
 Also check `adapters/base.py`'s `canonical_fingerprint` (the fallback path used when `state["rows"]` isn't a list, `adapters/base.py:41-48` per the exploration) — read it and apply the same `default=str` → `codec.dumps` replacement there for consistency, since it's the fallback fingerprint path and would otherwise remain lossy/unstable for non-row-shaped state.
 
-- [ ] **Step 8: Run the full existing test suite to catch fallout**
+- [x] **Step 8: Run the full existing test suite to catch fallout**
 
 ```bash
 uv run pytest tests/test_journal.py tests/adapters/test_postgres.py tests/test_reverter.py -v
 ```
 Expected: existing tests pass, or fail in ways that reveal a test asserting the *old* stringified behavior (e.g. a test asserting `record.pre_state["amount"] == "10.50"` as a string) — if so, fix the test's assertion to expect the native `Decimal("10.50")` now that round-tripping is exact, since that's the whole point of this task. Do not weaken the new codec to keep an old test passing.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/backstep/codec.py src/backstep/journal.py src/backstep/adapters/postgres.py src/backstep/adapters/base.py tests/test_codec.py
@@ -709,9 +715,11 @@ codec used identically on write and read, and in Postgres fingerprinting."
 - Consumes: `codec` from `src/backstep/codec.py` (Task 2a), `PostgresAdapter` from `src/backstep/adapters/postgres.py`, `current_fingerprint`/`fetch_current_rows` from same, `postgres_dsn` fixture from `tests/conftest.py`, `requires_postgres` marker from `tests/pg_testing.py`. Read `tests/adapters/test_postgres.py` in full first — reuse its exact patterns for connecting/tearing down a `PostgresAdapter` against the `postgres_dsn` fixture, and its `test_fingerprint_is_stable_and_order_independent` / `test_current_fingerprint_detects_drift_and_missing_rows` tests as templates for structure (don't reinvent connection/schema setup boilerplate that already exists there).
 - Produces: nothing consumed downstream, but MUST pass before Task 3/4 tests are written (per Global Constraints — Task 2 changes fingerprint canonicalization and these are the tests proving it didn't break).
 
-- [ ] **Step 1: Read `tests/adapters/test_postgres.py` and `tests/conftest.py` in full** to confirm exact fixture usage, connection helper patterns, and how existing tests build/tear down a test table.
+- [x] **Step 1: Read `tests/adapters/test_postgres.py` and `tests/conftest.py` in full** to confirm exact fixture usage, connection helper patterns, and how existing tests build/tear down a test table.
 
-- [ ] **Step 2: Write the schema + seed helper**
+- [x] **Step 2: Write the schema + seed helper**
+
+  > **Note:** As committed in `8045a07`, the JSONB seed values were Python dicts, which asyncpg rejects (no jsonb codec), so the fixture errored for all 25 tests. Fixed in `3026215` by seeding JSON text.
 
 ```python
 CREATE_TABLE_SQL = """
@@ -744,7 +752,7 @@ Seed row 1 (non-trivial values): `amount=Decimal("1234.5678")`, `seen_at` a tz-a
 
 Insert via `conn.execute` with the adapter's own pool/connection (or a raw asyncpg connection opened against `postgres_dsn` — match whatever pattern `test_postgres.py` already uses for table setup, likely a fixture or helper function; reuse it, don't duplicate).
 
-- [ ] **Step 3: Round-trip test (requirement i)**
+- [x] **Step 3: Round-trip test (requirement i)**
 
 ```python
 @requires_postgres
@@ -775,7 +783,7 @@ async def test_round_trip_capture_update_revert(postgres_dsn):
 ```
 Do this for BOTH seeded rows (the non-trivial row and the all-NULL row) — the task says "the row," singular, for the round-trip assertion structure, but since there are two seeded rows, run the UPDATE→revert→compare cycle against row 1 (the non-trivial one) as the primary round-trip proof, and separately assert (in requirement ii/iii below) that the all-NULL row's fingerprint behaves correctly too. Write actual working code once `proxy.py`'s capture/execute/revert division of responsibility is confirmed by reading it — do not guess at the ActionRecord construction without checking required fields.
 
-- [ ] **Step 4: Fingerprint stability test (requirement ii) — parametrized per column type**
+- [x] **Step 4: Fingerprint stability test (requirement ii) — parametrized per column type**
 
 ```python
 @requires_postgres
@@ -797,7 +805,9 @@ async def test_fingerprint_stable_under_no_change(postgres_dsn, column):
 ```
 Per Global Constraints: if this fails for ANY column, STOP and fix `codec.py`/`_fingerprint_state` before writing requirement (iii) or continuing to Task 2c. Do not comment out or skip a failing case.
 
-- [ ] **Step 5: Fingerprint sensitivity test (requirement iii)**
+- [x] **Step 5: Fingerprint sensitivity test (requirement iii)**
+
+  > **Note:** With no jsonb codec, asyncpg returns `payload` as Postgres-normalized JSON text, not a dict; the key-reorder test compares those strings (comment corrected in `3026215`).
 
 One test per mutation type, each asserting `current_fingerprint(...)` differs from the pre-mutation `post_fingerprint` EXCEPT the jsonb key-reorder case, which must NOT differ:
 
@@ -828,12 +838,14 @@ async def test_fingerprint_insensitive_to_jsonb_key_reorder(postgres_dsn):
 
 - [ ] **Step 6: Run — MUST NOT skip**
 
+  > **Note:** Not done at `8045a07`: the commit claimed these tests passed, but they could not have run (fixture error above, hidden by Docker-less skips). They first ran for real after `3026215` and now pass with 0 skipped.
+
 ```bash
 uv run pytest tests/adapters/test_type_fidelity.py -v
 ```
 Expected: every test in this file actually runs (no `SKIPPED`) since `BACKSTEP_TEST_PG_DSN` is live, and all pass. If requirement (ii) fails for any type, stop, fix `codec.py`/`postgres.py`, rerun, and only proceed once green.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add tests/adapters/test_type_fidelity.py
@@ -850,7 +862,7 @@ git commit -m "test: round-trip and fingerprint stability/sensitivity for all DB
 **Interfaces:**
 - Consumes: `codec.dumps`/`_fingerprint_state` (or the codec's `dumps` directly, whichever is the actual fingerprinted representation per Task 2a) — this test does NOT need `postgres_dsn`/`requires_postgres` since it's testing serialization determinism, not DB behavior, so it should NOT be marked `requires_postgres` and must not be skippable.
 
-- [ ] **Step 1: Write `tests/test_fingerprint_cross_process.py`**
+- [x] **Step 1: Write `tests/test_fingerprint_cross_process.py`**
 
 ```python
 """Guards against dict ordering or PYTHONHASHSEED randomization leaking into
@@ -913,14 +925,14 @@ def test_fingerprint_stable_across_processes(tmp_path: Path) -> None:
 
 Note: `_fingerprint_state` expects native Python objects (e.g. `Decimal`) in `state["rows"]`, not the encoded tagged form — check its actual input contract from Task 2a's changes (it calls `codec.dumps` internally, which itself calls `encode`) before deciding whether the subprocess script should decode first. Adjust the script to call `decode(json.loads(...))` before `_fingerprint_state(...)` if that's what the real signature requires — write this against the actual Step 2a code, not this plan's guess.
 
-- [ ] **Step 2: Run**
+- [x] **Step 2: Run**
 
 ```bash
 uv run pytest tests/test_fingerprint_cross_process.py -v
 ```
 Expected: PASS, not skipped (no Postgres dependency).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_fingerprint_cross_process.py
@@ -940,9 +952,9 @@ git commit -m "test: cross-process fingerprint determinism guard"
 - Consumes: `PartialDriftScenario`/`UnparseableSqlScenario` from `tests/scenarios/`, `run_eval`/`_grade` from `backstep.eval`, `Reverter._check_drift` and the sqlglot parse guard (`postgres.py:206-210`) and the DELETE presence-check (`fetch_rows_at_pks`/`Reverter._check_delete_drift`) as monkeypatch targets, `REFUSAL_OUTCOMES` from `backstep.reverter`. Read `tests/scenarios/partial_drift.py`, `tests/scenarios/unparseable_sql.py`, and `reverter.py`'s `_check_delete_drift`/`_check_update_or_insert_drift` in full before writing — this plan's map is not a substitute.
 - Note: no existing "DELETE reoccupation" scenario is listed among the 6 `SCENARIOS` per the exploration (`WrongWhereUpdateScenario`, `CascadingDeleteScenario`, `RunawayInsertLoopScenario`, `MixedSessionScenario`, `PartialDriftScenario`, `UnparseableSqlScenario`) — the task's 3rd guard ("DELETE reoccupation with the presence check patched out") is not necessarily tied to one of the 6 named eval scenarios; it may need to be driven directly against `Reverter`/`PostgresAdapter` (a DELETE + revert flow) rather than through `run_eval`. Confirm by grepping `tests/scenarios/` and `reverter.py`/`test_reverter.py` for "reoccup" or similar before deciding whether this guard runs through the eval grader or through `Reverter` directly — if no such eval scenario exists, build the guard as a direct `Reverter.revert_action` test (still asserting on the returned `RevertOutcome`/journal status, which is the closest equivalent to "grade" outside the eval harness) and note this deviation explicitly in the test file's docstring.
 
-- [ ] **Step 1: Read `tests/scenarios/partial_drift.py`, `tests/scenarios/unparseable_sql.py`, `reverter.py` (`_check_drift`, `_check_delete_drift`, `_check_update_or_insert_drift`, `_revert_entry`), and `tests/test_reverter.py`'s `TestPostgresDrift` class** in full.
+- [x] **Step 1: Read `tests/scenarios/partial_drift.py`, `tests/scenarios/unparseable_sql.py`, `reverter.py` (`_check_drift`, `_check_delete_drift`, `_check_update_or_insert_drift`, `_revert_entry`), and `tests/test_reverter.py`'s `TestPostgresDrift` class** in full.
 
-- [ ] **Step 2: Guard 1 — `partial_drift` with `_check_drift` patched to always return no-drift**
+- [x] **Step 2: Guard 1 — `partial_drift` with `_check_drift` patched to always return no-drift**
 
 ```python
 import pytest
@@ -984,6 +996,8 @@ The `_run_single_scenario` helper (or equivalent) needs to be either imported fr
 
 - [ ] **Step 3: Guard 2 — `unparseable_sql` with the sqlglot parse guard patched to attempt capture anyway**
 
+  > **Note:** Done differently (`dfcb128`): bypassing `capture()`'s try/except does not flip the grade, because `proxy._intercept_call_tool` also catches the error and the revert still refuses `refused_no_pre_state`. The guard instead makes `capture()` guess (drops the CTE-referencing WHERE) and asserts a safety-violation grade; rationale is in the test file docstring.
+
 ```python
 async def test_unparseable_sql_guard_forcing_capture_fails_or_miscaptures(postgres_dsn, monkeypatch):
     """With the sqlglot parse-failure guard bypassed (forcing capture() to
@@ -1015,7 +1029,9 @@ async def test_unparseable_sql_guard_forcing_capture_fails_or_miscaptures(postgr
     )
 ```
 
-- [ ] **Step 4: Guard 3 — DELETE reoccupation with the presence check patched out**
+- [x] **Step 4: Guard 3 — DELETE reoccupation with the presence check patched out**
+
+  > **Note:** No DELETE-reoccupation eval scenario exists, so (as this step allows) the guard drives `Reverter.revert_action` directly and asserts `asyncpg.UniqueViolationError`; the deviation is noted in the test file docstring.
 
 Per Step 1's investigation, either wire this through an existing eval scenario (if one is found on closer reading) or drive it directly:
 
@@ -1051,11 +1067,11 @@ async def test_delete_reoccupation_guard_disabling_presence_check(postgres_dsn, 
 ```
 Write the exact assertion once `Reverter.revert_action`'s actual return type is confirmed by reading `reverter.py` (likely returns something carrying a `RevertOutcome` and a note — match its real shape, don't guess field names blind).
 
-- [ ] **Step 5: Each guard must fail loudly if the scenario still PASSES with the guard disabled**
+- [x] **Step 5: Each guard must fail loudly if the scenario still PASSES with the guard disabled**
 
 This is already satisfied by the `assert result.recovered != "refused"` / `assert outcome not in REFUSAL_OUTCOMES` structure in Steps 2-4 — if disabling the mechanism does NOT change the outcome (i.e. the scenario still refuses correctly even with the guard bypassed), those assertions themselves fail, which is exactly "fail loudly if they PASS the scenario." Confirm each test file docstring states this explicitly per the task's requirement.
 
-- [ ] **Step 6: Register the `mutation` marker in `pyproject.toml`**
+- [x] **Step 6: Register the `mutation` marker in `pyproject.toml`**
 
 ```toml
 [tool.pytest.ini_options]
@@ -1066,7 +1082,7 @@ markers = [
 ]
 ```
 
-- [ ] **Step 7: Document the marker in README's testing section**
+- [x] **Step 7: Document the marker in README's testing section**
 
 Add to `### Postgres-backed tests and \`backstep eval\`` (or a new adjacent subsection):
 ```markdown
@@ -1085,7 +1101,7 @@ Run just these:
     uv run pytest -m mutation
 ```
 
-- [ ] **Step 8: Run**
+- [x] **Step 8: Run**
 
 ```bash
 uv run pytest tests/test_mutation_guards.py -v
@@ -1093,7 +1109,7 @@ uv run pytest -m mutation -v
 ```
 Expected: all guard tests PASS (meaning: disabling the mechanism DID cause the expected failure/change in grade — the assertions inside each test are what "passing" means here). None skipped.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add tests/test_mutation_guards.py pyproject.toml README.md
@@ -1110,9 +1126,9 @@ git commit -m "test: mutation guards proving drift/parse/presence-check refusals
 **Interfaces:**
 - Consumes: `Journal` from `backstep.journal` (all methods: `begin_action`, `commit_action`, `mark_reverted`, `mark_unrevertable`, `fail_action`, `get_action`), `Reverter`/`Reverter.revert_action` from `backstep.reverter`, `REFUSAL_OUTCOMES`/`RevertOutcome` from `backstep.reverter`, `PostgresAdapter` for the real-Postgres-backed transitions. Read `reverter.py`'s full `_revert_entry` (already summarized above with line numbers) and `journal.py` (already read in full) before writing — confirm `Reverter.revert_action`'s exact public signature/return type by reading `reverter.py` end to end (the map only covers `_revert_entry`, the private worker).
 
-- [ ] **Step 1: Read `reverter.py` end to end** (the plan has only excerpted `_revert_entry` and `_check_drift`) to get `Reverter.__init__`, `Reverter.revert_action`'s public signature, `Reverter.revert_session`, and `Reverter.check_drift` exactly.
+- [x] **Step 1: Read `reverter.py` end to end** (the plan has only excerpted `_revert_entry` and `_check_drift`) to get `Reverter.__init__`, `Reverter.revert_action`'s public signature, `Reverter.revert_session`, and `Reverter.check_drift` exactly.
 
-- [ ] **Step 2: Write the 5 required transition sequences (4a)**
+- [x] **Step 2: Write the 5 required transition sequences (4a)**
 
 Each as its own test function against a real Postgres-backed row (reuse the `postgres_dsn` fixture + a simple single-table setup, similar to `tests/test_reverter.py`'s `TestPostgresDrift` class — read and reuse its harness rather than reinventing):
 
@@ -1180,6 +1196,8 @@ For Step 5's transition (`adapter.revert() raises`), if reading `reverter.py` sh
 
 - [ ] **Step 3: Write the parametrized invariant test (4b)**
 
+  > **Note:** Done differently: see the implementation note inside this step. The invariant uses three classes (TRANSIENT / STATUS_GUARD / PERMANENT), not two.
+
 ```python
 import pytest
 from backstep.reverter import REFUSAL_OUTCOMES
@@ -1222,14 +1240,14 @@ async def test_refusal_status_invariant(postgres_dsn, refusal_reason):
 
 `_drive_to_refusal(postgres_dsn, refusal_reason)` needs one small setup branch per `refusal_reason` value (already-reverted needs a prior successful revert first, R4/irreversible needs a `reversibility="R4"` action, no-pre-state needs a capture-failed action, no-primary-key needs a PK-less DELETE, drift needs an out-of-band mutation, etc.) — write each branch by directly constructing journal entries via `Journal.begin_action`/`commit_action` with the right `reversibility`/`pre_state`/`adapter` values to hit each specific refusal path in `_revert_entry`, rather than always going through a full capture/execute cycle (faster, and more precisely targeted at the specific branch). Confirm each branch actually reaches the intended refusal reason by asserting on `outcome` before asserting on `status` (a two-part assertion: "did we hit the refusal we meant to test" then "did status land where the invariant says it should").
 
-- [ ] **Step 4: Run**
+- [x] **Step 4: Run**
 
 ```bash
 uv run pytest tests/test_journal_state_machine.py -v
 ```
 Expected: all pass, none skipped, including all parametrized cases (one per `RevertOutcome` refusal reason).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_journal_state_machine.py
@@ -1242,7 +1260,7 @@ git commit -m "test: multi-transition journal state machine + transient/permanen
 
 **Files:** none modified — this task only runs commands and reports real output.
 
-- [ ] **Step 1: Run each command in order, capturing full output**
+- [x] **Step 1: Run each command in order, capturing full output**
 
 ```bash
 uv run ruff check .
@@ -1256,7 +1274,7 @@ uv run backstep doctor            # with no backstep.toml present
 ```
 (Prefer invoking `doctor --config <nonexistent path>` over moving files around, if the CLI supports a `--config` override — matches the CLI test pattern from Task 1b and avoids touching repo state destructively. Confirm via `backstep doctor --help`.)
 
-- [ ] **Step 2: Report real numbers**
+- [x] **Step 2: Report real numbers**
 
 For `uv run pytest`: report exact passed/failed/skipped/error counts from pytest's summary line. Per Global Constraints, skipped should be 0 — if it isn't, identify which tests skipped and why (e.g. a stray `skipif` not covered by the live `BACKSTEP_TEST_PG_DSN`) and fix or explain, don't just report the number silently.
 
@@ -1265,6 +1283,8 @@ For `uv run backstep eval`: paste the actual table output. Confirm it reads 3 fu
 For `ruff`/`mypy`: report clean or list every remaining violation with file:line.
 
 - [ ] **Step 3: No commit for this task** — it's a verification/reporting step, not a code change. If Step 1 surfaces a fixable issue (lint violation, type error, unexpected test failure), fix it as a small follow-up commit referencing which verification step caught it, then re-run the full sequence from Step 1 to confirm green before reporting final numbers.
+
+  > **Note:** Two follow-up commits were made: `475a041` regenerated the stale `eval_results.json` (assigned by the earlier test-suite handoff) and `b2702b9` synced README's benchmark table. The full Step 1 sequence was re-run on `475a041` afterwards: ruff/mypy clean, 142 passed / 0 skipped, `-m mutation` 3 passed, eval 3 full / 1 partial / 2 refused.
 
 ---
 
