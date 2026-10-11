@@ -33,6 +33,7 @@ import asyncpg
 import pytest
 
 from backstep.adapters.base import AdapterRegistry
+from backstep.adapters.base import RevertResult as AdapterRevertResult
 from backstep.adapters.postgres import PostgresAdapter
 from backstep.config import ReversibilityClass
 from backstep.journal import ActionRecord, ActionStatus, Journal
@@ -318,6 +319,40 @@ async def test_committed_adapter_revert_raises_status_stays_committed_retry_poss
     assert retry.outcome == "reverted"
     _assert_entry(await journal.get_action(action_id), status="reverted", note_set=True)
     assert await _document_status(pool) == "draft"
+
+
+@requires_postgres
+async def test_committed_adapter_revert_not_ok_marks_unrevertable_retry_refused(
+    journal: Journal,
+    adapter: PostgresAdapter,
+    reverter: Reverter,
+    pool: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    action_id = await _commit_update(journal, adapter, pool)
+    _assert_entry(await journal.get_action(action_id), status="committed")
+
+    async def _not_ok(entry: ActionRecord) -> AdapterRevertResult:
+        return AdapterRevertResult(ok=False, detail="stub adapter declined: pre_state unusable")
+
+    monkeypatch.setattr(adapter, "revert", _not_ok)
+    # The counterpart of the raise case above: an `ok=False` *result* is taken
+    # as permanent, so the entry is marked unrevertable and retry is foreclosed.
+    first = await reverter.revert_action(action_id)
+    assert first.outcome == "failed"
+    assert first.ok is False
+    assert "stub adapter declined" in first.detail
+    after_first = await journal.get_action(action_id)
+    _assert_entry(after_first, status="unrevertable", error_contains="stub adapter declined")
+    # The stub mutated nothing, and the reverter must not have either.
+    assert await _document_status(pool) == "archived"
+
+    monkeypatch.undo()
+    retry = await reverter.revert_action(action_id)
+    assert retry.outcome == "refused_not_committed"
+    assert "'unrevertable'" in retry.detail
+    assert await journal.get_action(action_id) == after_first
+    assert await _document_status(pool) == "archived"
 
 
 # --- Refusal-class status invariant -----------------------------------------
