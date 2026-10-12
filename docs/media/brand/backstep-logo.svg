@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <title>Backstep</title>
+  <rect x="1.5" y="1.5" width="61" height="61" rx="15" fill="#3DDC97" fill-opacity="0.12" stroke="#3DDC97" stroke-opacity="0.45" stroke-width="1.5"/>
+  <path d="M15 27 H38 A11 11 0 0 1 38 49 H27" stroke="#3DDC97" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M25 17 L15 27 L25 37" stroke="#3DDC97" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

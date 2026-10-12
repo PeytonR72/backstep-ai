@@ -7,6 +7,7 @@
     "studio": "remotion studio",
     "render": "remotion render src/index.ts BackstepDemo out/backstep-demo.mp4 --codec=h264 --crf=20",
     "poster": "remotion still src/index.ts BackstepDemo out/poster.png --frame=1095",
+    "logo": "remotion still src/index.ts Logo ../docs/media/brand/backstep-logo-512.png --image-format=png && remotion still src/index.ts Logo ../docs/media/brand/backstep-logo-180.png --image-format=png --scale=0.3515625 && remotion still src/index.ts Logo ../docs/media/brand/backstep-logo-32.png --image-format=png --scale=0.0625",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
