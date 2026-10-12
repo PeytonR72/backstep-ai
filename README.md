@@ -2,6 +2,10 @@
 
 **An undo button for AI agents.**
 
+<a href="docs/media/backstep-demo.mp4"><img src="docs/media/backstep-demo-poster.png" alt="Backstep demo. An agent's UPDATE zeroes every account, and one backstep undo command restores them." width="100%"></a>
+
+▶ [Watch the 1 minute demo](docs/media/backstep-demo.mp4), built in code with Remotion (source in [`demo-video/`](demo-video/)).
+
 Backstep sits between an AI agent and the tools it calls. Before the agent changes any data, Backstep records what that data looked like. If the agent makes a mistake, you can review exactly what it did and roll it back with one command.
 
 AI agents are getting real write access to production systems like databases, file stores, and cloud accounts. They are also still prone to mistakes, like an UPDATE with the wrong WHERE clause or a loop that inserts the same row two hundred times. Most teams handle this risk by either keeping agents read only or hoping for the best. Backstep offers a third option. Let the agent act, keep a precise record of every change, and make recovery fast and safe.

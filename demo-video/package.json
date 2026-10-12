@@ -1,0 +1,26 @@
+{
+  "name": "backstep-demo-video",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Demo video for Backstep, built with Remotion",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render src/index.ts BackstepDemo out/backstep-demo.mp4 --codec=h264 --crf=20",
+    "poster": "remotion still src/index.ts BackstepDemo out/poster.png --frame=1095",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.534",
+    "@remotion/google-fonts": "4.0.534",
+    "@remotion/transitions": "4.0.534",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "remotion": "4.0.534"
+  },
+  "devDependencies": {
+    "@remotion/bundler": "4.0.534",
+    "@remotion/renderer": "4.0.534",
+    "@types/react": "19.1.12",
+    "typescript": "5.6.3"
+  }
+}
