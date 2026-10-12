@@ -1,0 +1,3 @@
+# Third-party Claude Code skills, not project code. Keep them out of
+# GitHub's language stats so the repo reads as the Python project it is.
+.claude/** linguist-vendored
