@@ -36,7 +36,7 @@ It loops gently, pauses when off-screen, and has a "Replay" control. With `prefe
   - `backstep-logo-solid.svg`: favicon and any light surface
   - `backstep-arrow.svg`: bare arrow, the source for the hero path-draw animation. Animate its existing path; do not alter its geometry.
   - `backstep-logo-512.png`, `-180.png`, `-32.png`: the Open Graph image, apple-touch-icon and favicon fallback
-- **Architecture:** Branch A, a single HTML file with no build step, at `site/index.html`, with assets referenced relatively from `docs/media/`. It must work when opened from disk and on GitHub Pages.
+- **Architecture:** Branch A, a single HTML file with no build step, at the repo root as `index.html` (so GitHub Pages serves it instead of the README), with assets referenced relatively from `docs/media/`. It must work when opened from disk and on GitHub Pages.
 - **Performance:** a fast first paint, with nothing in the first viewport waiting on a heavy library. Do not use Three.js unless it clearly earns its weight (it probably doesn't here). Lazy-load the demo video.
 - **Accessibility:** WCAG AA contrast, visible focus rings, a sensible tab order, touch targets of at least 44 px, `prefers-reduced-motion` respected everywhere, and real text (not text baked into images).
 - **Viewports:** 320, 768, 1280 and 1920 px. At 320 px the hero demo stacks and stays legible.
