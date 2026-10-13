@@ -1,0 +1,1166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backstep: an undo button for AI agents</title>
+<meta name="description" content="Backstep sits between an AI agent and the tools it calls. It records what data looked like before every change, so any mistake can be reviewed and rolled back with one command.">
+<meta name="theme-color" content="#0B0D10">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Backstep: an undo button for AI agents">
+<meta property="og:description" content="Records what data looked like before an AI agent changes it, so any mistake can be rolled back with one command.">
+<meta property="og:image" content="https://peytonr72.github.io/backstep-ai/docs/media/brand/backstep-logo-512.png">
+<meta name="twitter:card" content="summary">
+<link rel="icon" type="image/svg+xml" href="../docs/media/brand/backstep-logo-solid.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="../docs/media/brand/backstep-logo-32.png">
+<link rel="apple-touch-icon" href="../docs/media/brand/backstep-logo-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Instrument Sans for headings: tight, precise grotesque proportions with just enough character in the
+     terminals to feel engineered rather than generic. IBM Plex Sans for body: drawn for technical
+     documentation, very legible at small sizes, and it sits naturally beside JetBrains Mono. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=Instrument+Sans:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  /* Brand palette, converted from the logo and demo video hex values. */
+  --bg: oklch(15.8% 0.007 258.4);          /* #0B0D10 */
+  --surface: oklch(19.0% 0.011 260.7);     /* #111419 */
+  --surface-2: oklch(21.7% 0.015 261.6);   /* #161A21 */
+  --line: oklch(27.6% 0.020 264.2);        /* #232832 */
+  --line-2: oklch(32.4% 0.021 262.6);      /* #2E343F */
+  --ink: oklch(93.6% 0.005 258.3);         /* #E8EAED */
+  --ink-2: oklch(66.4% 0.025 260.7);       /* #8B94A3, AA on every surface */
+  --ink-3: oklch(49.4% 0.025 261.7);       /* #5A6270, decoration only: below AA for text */
+  --accent: oklch(79.7% 0.164 159.7);      /* #3DDC97 */
+  --accent-deep: oklch(58.3% 0.110 161.3); /* #2F8F66 */
+  --accent-tint: oklch(23.6% 0.024 167.3); /* #13221C */
+  --danger: oklch(69.1% 0.199 23.9);       /* #FF5C5C */
+  --warn: oklch(82.7% 0.098 85.7);         /* #E3C27A */
+  --on-accent: oklch(15.8% 0.007 258.4);
+
+  --font-display: "Instrument Sans", "IBM Plex Sans", ui-sans-serif, sans-serif;
+  --font-body: "IBM Plex Sans", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 150ms;
+  --dur: 260ms;
+  --dur-slow: 400ms;
+
+  --radius: 10px;
+  --radius-lg: 14px;
+  --gutter: 16px;
+  --max: 1200px;
+  --nav-h: 64px;
+  color-scheme: dark;
+}
+@media (min-width: 768px) { :root { --gutter: 32px; } }
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: calc(var(--nav-h) + 16px); }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 1rem/1.6 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+img, svg, video { display: block; max-width: 100%; }
+a { color: inherit; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+p { margin: 0; text-wrap: pretty; }
+code, kbd, .mono { font-family: var(--font-mono); font-feature-settings: "zero" 0; }
+::selection { background: var(--accent-deep); color: var(--ink); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+[hidden] { display: none !important; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.skip {
+  position: absolute; left: var(--gutter); top: -100px; z-index: 100;
+  background: var(--accent); color: var(--on-accent); padding: 12px 16px; border-radius: 8px;
+  font-weight: 500; text-decoration: none;
+}
+.skip:focus { top: 12px; }
+
+.wrap { width: 100%; max-width: calc(var(--max) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 44px; padding: 0 18px; border-radius: 9px;
+  font: 500 0.9375rem/1 var(--font-body); text-decoration: none; white-space: nowrap;
+  border: 1px solid var(--line-2); background: var(--surface); color: var(--ink);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.btn:hover { background: var(--surface-2); border-color: var(--ink-3); }
+.btn:active { transform: translateY(1px); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn-primary:hover { background: oklch(84% 0.15 159.7); border-color: oklch(84% 0.15 159.7); }
+.btn-sm { min-height: 44px; padding: 0 14px; font-size: 0.875rem; }
+
+/* ---------- Nav ---------- */
+.nav {
+  position: sticky; top: 0; z-index: 50; height: var(--nav-h);
+  background: color-mix(in oklch, var(--bg) 82%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
+  -webkit-backdrop-filter: saturate(140%) blur(12px);
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--dur) var(--ease);
+}
+.nav.is-scrolled { border-bottom-color: var(--line); }
+.nav .wrap { height: 100%; display: flex; align-items: center; gap: 24px; }
+.brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; min-height: 44px; }
+.brand img { width: 28px; height: 28px; }
+.brand span { font: 600 1.0625rem/1 var(--font-display); letter-spacing: -0.01em; }
+.nav-links { display: none; list-style: none; margin: 0 0 0 auto; padding: 0; gap: 4px; }
+.nav-links a {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 8px;
+  color: var(--ink-2); text-decoration: none; font-size: 0.9375rem;
+  transition: color var(--dur-fast) var(--ease);
+}
+.nav-links a:hover { color: var(--ink); }
+.nav .btn { margin-left: auto; }
+@media (min-width: 720px) {
+  .nav-links { display: flex; }
+  .nav .btn { margin-left: 8px; }
+}
+
+/* ---------- Section scaffolding ---------- */
+section { position: relative; }
+.section { padding: 56px 0; border-top: 1px solid var(--line); }
+@media (min-width: 1024px) { .section { padding: 72px 0; } }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font: 500 0.75rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-2);
+}
+.eyebrow::before { content: ""; width: 16px; height: 1px; background: var(--accent); }
+.section-head { max-width: 780px; margin-bottom: 32px; }
+.section-head h2 { font-size: clamp(1.75rem, 3.4vw, 2.375rem); line-height: 1.12; margin-top: 14px; }
+.section-head p { color: var(--ink-2); font-size: 1.0625rem; margin-top: 12px; }
+
+/* Scroll reveals: only hidden once JS has confirmed it will reveal them. */
+.js .reveal { opacity: 0; transform: translateY(10px); transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease); }
+.js .reveal.is-in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .js .reveal { opacity: 1; transform: none; transition: none; } }
+
+/* ---------- Hero ---------- */
+.hero { padding: 40px 0 64px; overflow: hidden; }
+.hero .wrap { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 56px; align-items: center; }
+@media (min-width: 1024px) {
+  .hero { padding: 48px 0 64px; }
+  .hero .wrap { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 64px; }
+}
+.hero-copy { max-width: 560px; }
+.hero h1 { font-size: clamp(2.375rem, 7vw, 4.25rem); line-height: 1.02; letter-spacing: -0.035em; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero .lede { margin-top: 24px; color: var(--ink-2); font-size: clamp(1.0625rem, 1.6vw, 1.1875rem); line-height: 1.6; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px; }
+.facts-row {
+  display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 36px 0 0; padding: 0; list-style: none;
+  font: 400 0.8125rem/1.4 var(--font-mono); color: var(--ink-2);
+}
+.facts-row li { display: inline-flex; align-items: center; gap: 8px; }
+.facts-row li::before { content: ""; width: 4px; height: 4px; border-radius: 1px; background: var(--ink-3); }
+
+/* ---------- Hero demo: the rewind ---------- */
+.demo {
+  position: relative; border: 1px solid var(--line-2); border-radius: var(--radius-lg);
+  background: linear-gradient(to bottom, var(--surface-2), var(--surface) 140px);
+  box-shadow: 0 1px 0 0 oklch(100% 0 0 / 0.04) inset, 0 40px 80px -40px oklch(0% 0 0 / 0.7);
+  overflow: hidden;
+}
+.demo-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 16px; height: 44px; border-bottom: 1px solid var(--line);
+  font: 400 0.75rem/1 var(--font-mono); color: var(--ink-2);
+}
+.demo-bar .where { display: inline-flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.demo-bar .where i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-3); flex: none; }
+.status {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line-2);
+  font: 500 0.6875rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2);
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status[data-tone="danger"] { color: var(--danger); border-color: color-mix(in oklch, var(--danger) 45%, transparent); background: color-mix(in oklch, var(--danger) 10%, transparent); }
+.status[data-tone="accent"] { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 40%, transparent); background: color-mix(in oklch, var(--accent) 9%, transparent); }
+
+.term { padding: 16px 16px 6px; font: 400 0.8125rem/1.55 var(--font-mono); min-height: 148px; }
+@media (min-width: 480px) { .term { padding: 18px 20px 6px; font-size: 0.875rem; } }
+.term-line { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; min-height: 1.55em; }
+.term-line .who { color: var(--ink-2); font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.08em; padding-top: 0.2em; }
+.term-line .cmd { color: var(--ink); word-break: break-word; }
+.term-line .cmd .kw { color: oklch(78% 0.08 250); }
+.term-out { min-height: 1.55em; padding-left: 72px; color: var(--ink-2); margin-bottom: 8px; font-size: 0.75rem; }
+@media (min-width: 480px) { .term-out { font-size: 0.8125rem; } }
+.term-out[data-tone="danger"] { color: var(--danger); }
+.term-out[data-tone="accent"] { color: var(--accent); }
+.caret { display: inline-block; width: 0.55em; height: 1.1em; vertical-align: -0.2em; background: var(--accent); margin-left: 1px; }
+.caret.blink { animation: blink 1.05s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+.ledger { position: relative; margin: 6px 16px 0; padding-top: 14px; }
+@media (min-width: 480px) { .ledger { margin: 6px 20px 0; } }
+.rewind-art { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; overflow: visible; max-width: none; }
+.rewind-art path { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.rewind-art .ribbon { opacity: 0.16; }
+.rewind-art .tip { fill: var(--accent); stroke: none; }
+.ledger table { position: relative; z-index: 1; width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ledger caption { text-align: left; font: 500 0.6875rem/1 var(--font-mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.1em; padding-bottom: 12px; }
+.ledger th { height: 34px; text-align: left; font: 500 0.6875rem/1 var(--font-mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--line); }
+.ledger th:last-child, .ledger td:last-child { text-align: right; }
+.ledger td { height: 40px; border-bottom: 1px solid color-mix(in oklch, var(--line) 70%, transparent); font-family: var(--font-mono); font-size: 0.9375rem; }
+.ledger td:first-child { color: var(--ink); font-family: var(--font-body); }
+.ledger tbody tr { transition: background 500ms var(--ease); }
+.ledger tbody tr.is-broken { background: color-mix(in oklch, var(--danger) 10%, transparent); }
+.ledger tbody tr.is-flash { background: color-mix(in oklch, var(--danger) 22%, transparent); transition-duration: 60ms; }
+.ledger .money { display: inline-block; min-width: 5ch; transition: color 300ms var(--ease); }
+.ledger tr.is-broken .money { color: var(--danger); }
+.ledger tr.is-restored .money { color: var(--accent); }
+.ledger tfoot td { border-bottom: 0; height: 44px; color: var(--ink-2); font-family: var(--font-body); font-size: 0.875rem; }
+.ledger tfoot td:last-child { font-family: var(--font-mono); color: var(--ink); font-size: 0.9375rem; }
+.ledger tfoot.is-broken td:last-child { color: var(--danger); }
+.ledger tfoot.is-restored td:last-child { color: var(--accent); }
+
+.demo-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 6px; padding: 10px 10px 10px 16px; border-top: 1px solid var(--line); min-height: 64px;
+}
+@media (min-width: 480px) { .demo-foot { padding-left: 20px; } }
+.demo-caption { font: 500 0.9375rem/1.35 var(--font-display); color: var(--ink); opacity: 0; transform: translateY(4px); transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease); }
+.demo-caption.is-in { opacity: 1; transform: none; }
+.demo-controls { display: flex; gap: 4px; flex: none; }
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-width: 44px; height: 44px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid transparent; background: transparent; color: var(--ink-2); cursor: pointer;
+  font: 500 0.8125rem/1 var(--font-body);
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.icon-btn:hover { color: var(--ink); background: var(--surface-2); border-color: var(--line); }
+.icon-btn svg { width: 16px; height: 16px; }
+.icon-btn .lbl-sm { display: none; }
+@media (min-width: 400px) { .icon-btn .lbl-sm { display: inline; } }
+
+/* Reduced motion: three still frames instead of the animation. */
+.frames { display: none; padding: 16px; gap: 12px; }
+.frame { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; background: var(--bg); }
+.frame .frame-t { font: 500 0.75rem/1.3 var(--font-mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.08em; display: flex; gap: 8px; align-items: baseline; }
+.frame .frame-t b { color: var(--ink-2); font-weight: 500; }
+.frame p:not(.frame-t) { margin-top: 8px; font: 400 0.75rem/1.5 var(--font-mono); color: var(--ink-2); word-break: break-word; }
+.frame table { width: 100%; border-collapse: collapse; margin-top: 10px; font-variant-numeric: tabular-nums; }
+.frame td { padding: 5px 0; border-top: 1px solid var(--line); font: 400 0.8125rem/1.3 var(--font-mono); }
+.frame td:first-child { font-family: var(--font-body); }
+.frame td:last-child { text-align: right; }
+.frame.f-broken td:last-child, .frame.f-broken p:not(.frame-t) { color: var(--danger); }
+.frame.f-restored td:last-child, .frame.f-restored p:not(.frame-t) { color: var(--accent); }
+.frames-caption { padding: 4px 16px 18px; font: 500 0.9375rem/1.35 var(--font-display); }
+@media (min-width: 560px) { .frames { grid-template-columns: repeat(3, minmax(0, 1fr)); } .frame p:not(.frame-t) { min-height: 4.5em; } }
+.demo .frames-caption { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .demo .live { display: none; }
+  .demo .frames { display: grid; }
+  .demo .frames-caption { display: block; }
+  .demo .status { display: none; }
+}
+
+/* ---------- Problem ---------- */
+.beats { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+@media (min-width: 640px) { .beats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .beats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.beat { background: var(--bg); padding: 24px; }
+.beat h3 { font-size: 1.1875rem; line-height: 1.3; }
+.beat p { color: var(--ink-2); margin-top: 8px; font-size: 0.9375rem; }
+.beat code { font-size: 0.875em; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 5px; }
+.beat-answer { background: var(--accent-tint); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 35%, transparent); }
+.beat-answer .tag { font: 500 0.75rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); }
+.beat-answer p { color: var(--ink); font: 500 1.0625rem/1.45 var(--font-display); margin-top: 12px; }
+
+/* ---------- How it works ---------- */
+.flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; position: relative; counter-reset: step; }
+.step { position: relative; padding: 0 0 28px 44px; }
+.step::before {
+  /* the connecting hairline */
+  content: ""; position: absolute; left: 11px; top: 26px; bottom: 0; width: 1px; background: var(--line-2);
+}
+.step::after {
+  content: ""; position: absolute; left: 11px; top: 26px; bottom: 0; width: 1px; background: var(--accent);
+  transform-origin: top; transform: scaleY(0); transition: transform 520ms var(--ease);
+}
+.step:last-child::before, .step:last-child::after { display: none; }
+.node {
+  position: absolute; left: 0; top: 0; width: 23px; height: 23px; border-radius: 7px;
+  border: 1px solid var(--line-2); background: var(--surface);
+  display: grid; place-items: center; font: 500 0.6875rem/1 var(--font-mono); color: var(--ink-2);
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+.step h3 { font-size: 1.25rem; line-height: 23px; }
+.step .plain { color: var(--ink-2); margin-top: 10px; max-width: 46ch; }
+.step details { margin-top: 14px; }
+.step summary {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; list-style: none;
+  font: 500 0.75rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2);
+  transition: color var(--dur-fast) var(--ease);
+}
+.step summary::-webkit-details-marker { display: none; }
+.step summary:hover { color: var(--ink); }
+.step summary svg { width: 12px; height: 12px; transition: transform var(--dur) var(--ease); }
+.step details[open] summary svg { transform: rotate(90deg); }
+.step details p { font: 400 0.8125rem/1.65 var(--font-mono); color: var(--ink-2); padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.step.is-lit .node { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
+.step.is-lit::after { transform: scaleY(1); }
+@media (min-width: 1024px) {
+  .flow { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px; }
+  .step { padding: 40px 0 0; }
+  .step::before, .step::after { left: 32px; right: -24px; top: 11px; bottom: auto; width: auto; height: 1px; }
+  .step::after { transform-origin: left; transform: scaleX(0); }
+  .step.is-lit::after { transform: scaleX(1); }
+  .step h3 { line-height: 1.3; }
+}
+@media (prefers-reduced-motion: reduce) { .step::after, .node { transition: none; } }
+
+/* ---------- Reversibility scale ---------- */
+.rev { margin-top: 40px; }
+.rev-head { max-width: 640px; margin-bottom: 16px; }
+.rev-head h3 { font-size: 1.375rem; line-height: 1.3; }
+.rev-head p { color: var(--ink-2); margin-top: 8px; font-size: 0.9375rem; }
+.scale { border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); }
+.gauge { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; padding: 20px 20px 0; }
+.gauge span { height: 6px; border-radius: 2px; background: var(--c); }
+.gauge-ends { display: flex; justify-content: space-between; padding: 10px 20px 6px; font: 500 0.6875rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); }
+.classes { list-style: none; margin: 0; padding: 0; display: grid; }
+.cls { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 2px 16px; padding: 14px 20px; border-top: 1px solid var(--line); }
+.cls .id { font: 500 1.0625rem/1.3 var(--font-mono); color: var(--c); grid-row: span 2; display: flex; align-items: flex-start; gap: 8px; }
+.cls .id::before { content: ""; width: 3px; height: 1.2em; border-radius: 2px; background: var(--c); flex: none; }
+.cls h4 { font: 600 1rem/1.4 var(--font-display); margin: 0; }
+.cls .handling { font: 400 0.8125rem/1.5 var(--font-mono); color: var(--ink-2); grid-column: 2; }
+@media (min-width: 900px) {
+  .classes { grid-template-columns: repeat(5, 1fr); }
+  .cls { display: block; padding: 18px 20px; border-left: 1px solid var(--line); }
+  .cls:first-child { border-left: 0; }
+  .cls .id { margin-bottom: 10px; }
+  .cls .handling { display: block; margin-top: 4px; }
+}
+.c0 { --c: var(--accent); }
+.c1 { --c: oklch(74% 0.14 155); }
+.c2 { --c: var(--warn); }
+.c3 { --c: oklch(74% 0.15 55); }
+.c4 { --c: var(--danger); }
+
+/* ---------- Benchmark ---------- */
+.bench-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 48px; align-items: end; margin-bottom: 20px; }
+.bench-top .section-head { margin-bottom: 24px; }
+@media (min-width: 1024px) { .bench-top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .bench-top .section-head { margin-bottom: 0; } }
+.score { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+@media (min-width: 560px) { .score { grid-template-columns: repeat(3, 1fr); } }
+.score div { background: var(--bg); padding: 18px 20px; }
+.score b { display: block; font: 500 clamp(2.25rem, 4vw, 2.75rem)/1 var(--font-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.score span { display: block; margin-top: 8px; color: var(--ink-2); font-size: 0.875rem; line-height: 1.4; }
+.score .full b, .score .refused b { color: var(--accent); }
+.score .partial b { color: var(--warn); }
+.score .refused span strong { color: var(--ink); font-weight: 500; }
+
+.bench-wrap { border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; }
+.bench { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.bench th { text-align: left; padding: 14px 20px; font: 500 0.6875rem/1.2 var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); background: var(--surface); border-bottom: 1px solid var(--line); }
+.bench td { padding: 14px 20px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.bench tr:last-child td { border-bottom: 0; }
+.bench .scn { font: 500 0.875rem/1.4 var(--font-mono); color: var(--ink); white-space: nowrap; }
+.bench .did { color: var(--ink-2); font-size: 0.875rem; }
+.bench .t { text-align: right; font: 500 1rem/1.4 var(--font-mono); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bench th:last-child { text-align: right; }
+.badge {
+  display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+  padding: 5px 10px; border-radius: 999px; font: 500 0.75rem/1 var(--font-mono);
+  border: 1px solid color-mix(in oklch, var(--c) 40%, transparent); color: var(--c);
+  background: color-mix(in oklch, var(--c) 9%, transparent);
+}
+.badge svg { width: 12px; height: 12px; }
+.b-full { --c: var(--accent); }
+.b-partial { --c: var(--warn); }
+.b-refused { --c: var(--accent); background: transparent; border-style: dashed; }
+.bench tr.is-refusal td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
+.bench tr.is-partial td:first-child { box-shadow: inset 2px 0 0 var(--warn); }
+@media (max-width: 719px) {
+  .bench thead { display: none; }
+  .bench, .bench tbody, .bench tr, .bench td { display: block; }
+  .bench tr { padding: 16px 20px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+  .bench tr:last-child { border-bottom: 0; }
+  .bench td { padding: 0; border: 0; }
+  .bench .scn { grid-column: 1; white-space: normal; word-break: break-all; }
+  .bench .t { grid-column: 2; grid-row: 1; }
+  .bench .did { grid-column: 1 / -1; }
+  .bench .res { grid-column: 1 / -1; }
+  .bench tr.is-refusal td:first-child, .bench tr.is-partial td:first-child { box-shadow: none; }
+  .bench tr.is-refusal { box-shadow: inset 2px 0 0 var(--accent); }
+  .bench tr.is-partial { box-shadow: inset 2px 0 0 var(--warn); }
+}
+.notes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin-top: 12px; }
+@media (min-width: 860px) { .notes { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 1180px) {
+  .bench-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: start; }
+  .notes { grid-template-columns: minmax(0, 1fr); margin-top: 0; }
+}
+.note { padding: 18px 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); }
+.note h3 { font-size: 1.0625rem; display: flex; align-items: center; gap: 10px; }
+.note h3 i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); flex: none; }
+.note p { color: var(--ink-2); margin-top: 6px; font-size: 0.9375rem; }
+.note code { color: var(--ink); font-size: 0.875em; }
+.source-link { display: inline-flex; align-items: center; gap: 8px; margin-top: 8px; min-height: 44px; color: var(--ink-2); font-size: 0.9375rem; text-underline-offset: 4px; }
+.source-link:hover { color: var(--ink); }
+
+/* ---------- Bento ---------- */
+.bento { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 640px) and (max-width: 859px) { .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); } .span-4 { grid-column: 1 / -1; } }
+@media (min-width: 860px) { .bento { grid-template-columns: repeat(6, 1fr); } .span-4 { grid-column: span 4; } .span-2 { grid-column: span 2; } }
+.tile { position: relative; padding: 22px 24px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; transition: border-color var(--dur) var(--ease); }
+.tile:hover { border-color: var(--line-2); }
+.tile .k { font: 500 0.6875rem/1 var(--font-mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-2); }
+.tile h3 { font-size: 1.1875rem; line-height: 1.3; margin-top: 12px; }
+.tile p { color: var(--ink-2); margin-top: 8px; font-size: 0.9375rem; }
+.tile .big { font: 500 2.5rem/1 var(--font-display); letter-spacing: -0.03em; color: var(--accent); margin-top: 12px; font-variant-numeric: tabular-nums; }
+.outcomes { list-style: none; padding: 0; margin: 16px 0 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.outcomes li { display: inline-flex; align-items: center; gap: 8px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 7px; font: 400 0.75rem/1.2 var(--font-mono); color: var(--ink-2); background: var(--bg); max-width: 100%; overflow-wrap: anywhere; }
+.outcomes li i { width: 7px; height: 7px; border-radius: 2px; border: 1px solid var(--ink-3); flex: none; }
+.outcomes li.mod { color: var(--accent); border-color: color-mix(in oklch, var(--accent) 40%, var(--line)); background: var(--accent-tint); }
+.outcomes li.mod i { background: var(--accent); border-color: var(--accent); }
+.types { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.types span { font: 400 0.75rem/1 var(--font-mono); color: var(--ink); padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); }
+.guard { margin-top: 14px; font: 400 0.75rem/1.7 var(--font-mono); color: var(--ink-2); padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); overflow-x: auto; white-space: pre; }
+.guard .ok { color: var(--accent); }
+.guard .bad { color: var(--warn); }
+.checks { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; font: 400 0.8125rem/1.4 var(--font-mono); }
+.checks li { display: flex; gap: 10px; align-items: center; color: var(--ink); }
+.checks svg { width: 14px; height: 14px; color: var(--accent); flex: none; }
+
+/* ---------- Video ---------- */
+.video-frame { border: 1px solid var(--line-2); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); aspect-ratio: 16 / 9; }
+.video-frame video { width: 100%; height: 100%; object-fit: cover; background: var(--bg); }
+.video-sec .section-head { margin-bottom: 24px; }
+@media (min-width: 1024px) {
+  .video-sec .wrap { display: grid; grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); gap: 56px; align-items: center; }
+  .video-sec .section-head { margin-bottom: 0; }
+}
+
+/* ---------- Getting started ---------- */
+.start { display: grid; grid-template-columns: minmax(0, 1fr); gap: 40px; align-items: start; }
+@media (min-width: 1024px) { .start { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 64px; } .start .section-head { margin-bottom: 0; } }
+.shell { border: 1px solid var(--line-2); border-radius: var(--radius-lg); background: var(--surface); overflow: hidden; }
+.shell-bar { display: flex; align-items: center; justify-content: space-between; padding: 0 6px 0 16px; height: 52px; border-bottom: 1px solid var(--line); font: 400 0.75rem/1 var(--font-mono); color: var(--ink-2); }
+.shell pre { margin: 0; padding: 18px 20px; overflow-x: auto; font: 400 0.875rem/1.9 var(--font-mono); }
+.shell .c { color: var(--ink-2); }
+.shell .p { color: var(--accent); user-select: none; }
+.copy-ok { color: var(--accent); }
+.start-note { margin-top: 16px; font-size: 0.9375rem; color: var(--ink-2); }
+.start-note code { color: var(--ink); font-size: 0.875em; }
+
+/* ---------- Footer ---------- */
+.foot { border-top: 1px solid var(--line); padding: 28px 0 32px; }
+.foot .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 32px; }
+.foot p { color: var(--ink-2); font-size: 0.875rem; }
+.foot nav { display: flex; flex-wrap: wrap; gap: 4px 8px; }
+.foot nav a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; color: var(--ink-2); font-size: 0.875rem; text-decoration: none; }
+.foot nav a:hover { color: var(--ink); }
+</style>
+<script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Backstep, back to top">
+      <img src="../docs/media/brand/backstep-logo.svg" alt="" width="28" height="28">
+      <span>Backstep</span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#benchmark">Benchmark</a></li>
+      <li><a href="https://github.com/PeytonR72/backstep-ai">GitHub</a></li>
+    </ul>
+    <a class="btn btn-sm" href="https://github.com/PeytonR72/backstep-ai">
+      <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      View on GitHub
+    </a>
+  </div>
+</header>
+
+<main id="main">
+<!-- ================= HERO ================= -->
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="wrap">
+    <div class="hero-copy">
+      <h1 id="hero-title">An undo button for <em>AI agents.</em></h1>
+      <p class="lede">Backstep sits between an AI agent and the tools it calls. Before the agent changes any data, it records what that data looked like, so any mistake can be reviewed and rolled back with one command.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://github.com/PeytonR72/backstep-ai">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+        <a class="btn" href="#video" id="watch">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 3.5v9a.5.5 0 00.77.42l7-4.5a.5.5 0 000-.84l-7-4.5A.5.5 0 005 3.5z"/></svg>
+          Watch the 1-min demo
+        </a>
+      </div>
+      <ul class="facts-row" aria-label="Key facts">
+        <li>Any MCP client</li>
+        <li>No agent changes</li>
+        <li>Python 3.11+</li>
+        <li>MIT</li>
+      </ul>
+    </div>
+
+    <figure class="demo" id="demo" aria-labelledby="demo-label" style="margin:0">
+      <figcaption class="sr-only" id="demo-label">
+        Demo: an accounts table holds alice 100 dollars, bob 250, carol 75 and dave 500. An AI agent runs an UPDATE with no WHERE clause and every balance becomes 0. Then backstep undo-session runs and every balance is restored to its exact original value.
+      </figcaption>
+      <div class="demo-bar" aria-hidden="true">
+        <span class="where"><i></i>agent session · postgres</span>
+        <span class="status" id="demo-status">Before</span>
+      </div>
+
+      <div class="live" aria-hidden="true">
+        <div class="term">
+          <div class="term-line"><span class="who">AI agent</span><span class="cmd" id="line-agent"></span></div>
+          <div class="term-out" id="out-agent"></div>
+          <div class="term-line"><span class="who">You</span><span class="cmd" id="line-you"></span></div>
+          <div class="term-out" id="out-you"></div>
+        </div>
+        <div class="ledger" id="ledger">
+          <svg class="rewind-art" id="rewind-art" viewBox="0 0 64 64" width="64" height="64">
+            <!-- Geometry copied verbatim from docs/media/brand/backstep-arrow.svg -->
+            <path class="ribbon" id="arrow-body" d="M15 27 H38 A11 11 0 0 1 38 49 H27"/>
+            <path class="ribbon" id="arrow-head" d="M25 17 L15 27 L25 37"/>
+            <circle class="tip" id="arrow-tip" r="1.6" cx="27" cy="49" opacity="0"/>
+          </svg>
+          <table>
+            <caption>Bank accounts</caption>
+            <thead><tr><th scope="col">Customer</th><th scope="col">Balance</th></tr></thead>
+            <tbody id="rows">
+              <tr><td>alice</td><td><span class="money">$100</span></td></tr>
+              <tr><td>bob</td><td><span class="money">$250</span></td></tr>
+              <tr><td>carol</td><td><span class="money">$75</span></td></tr>
+              <tr><td>dave</td><td><span class="money">$500</span></td></tr>
+            </tbody>
+            <tfoot id="total-row"><tr><td>Total</td><td><span class="money" id="total">$925</span></td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="frames" aria-hidden="true">
+        <div class="frame">
+          <p class="frame-t"><b>1</b> Before</p>
+          <p>4 accounts, $925 in total</p>
+          <table><tr><td>alice</td><td>$100</td></tr><tr><td>bob</td><td>$250</td></tr><tr><td>carol</td><td>$75</td></tr><tr><td>dave</td><td>$500</td></tr></table>
+        </div>
+        <div class="frame f-broken">
+          <p class="frame-t"><b>2</b> Agent's mistake</p>
+          <p>UPDATE accounts SET balance = 0; (no WHERE)</p>
+          <table><tr><td>alice</td><td>$0</td></tr><tr><td>bob</td><td>$0</td></tr><tr><td>carol</td><td>$0</td></tr><tr><td>dave</td><td>$0</td></tr></table>
+        </div>
+        <div class="frame f-restored">
+          <p class="frame-t"><b>3</b> After undo</p>
+          <p>backstep undo-session</p>
+          <table><tr><td>alice</td><td>$100</td></tr><tr><td>bob</td><td>$250</td></tr><tr><td>carol</td><td>$75</td></tr><tr><td>dave</td><td>$500</td></tr></table>
+        </div>
+      </div>
+      <p class="frames-caption" aria-hidden="true">One command. Exact original state.</p>
+
+      <div class="demo-foot live">
+        <p class="demo-caption" id="demo-caption" aria-hidden="true">One command. Exact original state.</p>
+        <div class="demo-controls">
+          <button class="icon-btn" type="button" id="demo-pause" aria-label="Pause demo" aria-pressed="false">
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" id="ico-pause"><rect x="4" y="3" width="3" height="10" rx="1"/><rect x="9" y="3" width="3" height="10" rx="1"/></svg>
+            <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" id="ico-play" hidden><path d="M5 3.5v9a.5.5 0 00.77.42l7-4.5a.5.5 0 000-.84l-7-4.5A.5.5 0 005 3.5z"/></svg>
+          </button>
+          <button class="icon-btn" type="button" id="demo-replay" aria-label="Replay demo">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9"/><path d="M2.5 2.5v3h3"/></svg>
+            <span class="lbl-sm" aria-hidden="true">Replay</span>
+          </button>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<!-- ================= VIDEO ================= -->
+<section class="section video-sec" id="video" aria-labelledby="video-title">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">Demo</span>
+      <h2 id="video-title">See it in one minute.</h2>
+      <p>From a wiped table to an exact restore, plus a refusal and the benchmark results.</p>
+    </div>
+    <div class="video-frame reveal">
+      <video id="demo-video" controls playsinline preload="none" poster="../docs/media/backstep-demo-poster.png" aria-label="Backstep demo video">
+        <source src="../docs/media/backstep-demo.mp4" type="video/mp4">
+        <a href="../docs/media/backstep-demo.mp4">Download the demo video (MP4)</a>
+      </video>
+    </div>
+  </div>
+</section>
+
+<!-- ================= PROBLEM ================= -->
+<section class="section" aria-labelledby="problem-title">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">The problem</span>
+      <h2 id="problem-title">Agents can change real data now. They still make mistakes.</h2>
+    </div>
+    <div class="beats reveal">
+      <div class="beat">
+        <h3>Agents have write access.</h3>
+        <p>They run queries against real databases, file stores and cloud accounts.</p>
+      </div>
+      <div class="beat">
+        <h3>They still get it wrong.</h3>
+        <p>An <code>UPDATE</code> with the wrong <code>WHERE</code> clause. An insert loop that runs 200 times.</p>
+      </div>
+      <div class="beat">
+        <h3>Two bad options.</h3>
+        <p>Keep the agent read-only, or give it write access and hope for the best.</p>
+      </div>
+      <div class="beat beat-answer">
+        <span class="tag">The third option</span>
+        <p>Let the agent act, keep an exact record of every change, and undo any of it with one command.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= HOW IT WORKS + REVERSIBILITY ================= -->
+<section class="section" id="how" aria-labelledby="how-title">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">How it works</span>
+      <h2 id="how-title">Five steps, on every tool call.</h2>
+    </div>
+    <ol class="flow" id="flow">
+      <li class="step">
+        <span class="node" aria-hidden="true">1</span>
+        <h3>Intercept</h3>
+        <p class="plain">Every tool call the agent makes passes through Backstep first.</p>
+        <details>
+          <summary><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>Technical detail</summary>
+          <p>A transparent MCP proxy aggregates tools from every configured upstream server and routes each call through an interceptor. It never alters or swallows the upstream response.</p>
+        </details>
+      </li>
+      <li class="step">
+        <span class="node" aria-hidden="true">2</span>
+        <h3>Classify</h3>
+        <p class="plain">Each tool has a risk grade, from read-only to irreversible.</p>
+        <details>
+          <summary><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>Technical detail</summary>
+          <p>Looks up the tool's reversibility class (R0 to R4) and decides to pass it through, journal it, ask for confirmation or block it. No model is in the loop at runtime.</p>
+        </details>
+      </li>
+      <li class="step">
+        <span class="node" aria-hidden="true">3</span>
+        <h3>Capture</h3>
+        <p class="plain">Before anything changes, it saves a copy of the rows about to change.</p>
+        <details>
+          <summary><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>Technical detail</summary>
+          <p>The Postgres adapter parses the statement with sqlglot, rewrites the INSERT, UPDATE or DELETE into a SELECT over the same rows, and runs it on its own connection.</p>
+        </details>
+      </li>
+      <li class="step">
+        <span class="node" aria-hidden="true">4</span>
+        <h3>Journal</h3>
+        <p class="plain">It writes down what happened and what the data looked like before.</p>
+        <details>
+          <summary><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>Technical detail</summary>
+          <p>An append-only SQLite journal stores the call's arguments, the state before the change and a fingerprint of the state right after it.</p>
+        </details>
+      </li>
+      <li class="step">
+        <span class="node" aria-hidden="true">5</span>
+        <h3>Revert</h3>
+        <p class="plain">One command puts it back. If someone else has changed the data since, it stops.</p>
+        <details>
+          <summary><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>Technical detail</summary>
+          <p>Compares the live rows with the stored fingerprint. No drift: restore the original rows. Any drift: refuse and show the difference.</p>
+        </details>
+      </li>
+    </ol>
+
+    <div class="rev reveal">
+      <div class="rev-head">
+        <h3 id="rev-title">Not every action can be undone. Backstep knows which.</h3>
+        <p>Every tool gets a reversibility grade. It decides what is recorded, what needs your confirmation and what is refused.</p>
+      </div>
+      <div class="scale" aria-labelledby="rev-title">
+        <div class="gauge" aria-hidden="true">
+          <span class="c0"></span><span class="c1"></span><span class="c2"></span><span class="c3"></span><span class="c4"></span>
+        </div>
+        <div class="gauge-ends" aria-hidden="true"><span>Safe</span><span>Irreversible</span></div>
+        <ol class="classes">
+          <li class="cls c0"><span class="id">R0</span><h4>Read-only</h4><span class="handling">Passed through</span></li>
+          <li class="cls c1"><span class="id">R1</span><h4>Fully reversible</h4><span class="handling">Captured and journaled</span></li>
+          <li class="cls c2"><span class="id">R2</span><h4>Reversible with loss</h4><span class="handling">Captured, optional confirm</span></li>
+          <li class="cls c3"><span class="id">R3</span><h4>Compensable only</h4><span class="handling">Journaled, no snapshot</span></li>
+          <li class="cls c4"><span class="id">R4</span><h4>Irreversible</h4><span class="handling">Blocked unless allowed</span></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= BENCHMARK ================= -->
+<section class="section" id="benchmark" aria-labelledby="bench-title">
+  <div class="wrap">
+    <div class="bench-top">
+      <div class="section-head reveal">
+        <span class="eyebrow">Recovery benchmark</span>
+        <h2 id="bench-title">Measured, not just tested.</h2>
+        <p><code class="mono">backstep eval</code> runs six "agent gone wrong" scenarios against a real Postgres database and grades each recovery.</p>
+      </div>
+      <div class="score reveal">
+        <div class="full"><b data-count="3">3</b><span>full recoveries</span></div>
+        <div class="partial"><b data-count="1">1</b><span>partial, reported as one</span></div>
+        <div class="refused"><b data-count="2">2</b><span>correct refusals. <strong>Refusing is the pass.</strong></span></div>
+      </div>
+    </div>
+
+    <div class="bench-body">
+    <div class="bench-wrap reveal">
+      <table class="bench">
+        <caption class="sr-only">Recovery benchmark: six scenarios, what the agent did, the result and the time to recover</caption>
+        <thead><tr><th scope="col">Scenario</th><th scope="col">What the agent did</th><th scope="col">Result</th><th scope="col">Recovery</th></tr></thead>
+        <tbody>
+          <tr><td class="scn">wrong_where_update</td><td class="did">An UPDATE that hit far more rows than intended</td><td class="res"><span class="badge b-full">Full recovery</span></td><td class="t" data-num="28" data-unit="ms">28 ms</td></tr>
+          <tr><td class="scn">runaway_insert_loop</td><td class="did">200 INSERTs from a stuck loop</td><td class="res"><span class="badge b-full">Full recovery</span></td><td class="t" data-num="2.7" data-unit="s" data-dec="1">2.7 s</td></tr>
+          <tr><td class="scn">mixed_session</td><td class="did">3 updates, 1 delete, 1 insert, undone together</td><td class="res"><span class="badge b-full">Full recovery</span></td><td class="t" data-num="87" data-unit="ms">87 ms</td></tr>
+          <tr class="is-partial"><td class="scn">cascading_delete</td><td class="did">A DELETE whose child rows cascade</td><td class="res"><span class="badge b-partial">Partial recovery</span></td><td class="t" data-num="37" data-unit="ms">37 ms</td></tr>
+          <tr class="is-refusal"><td class="scn">partial_drift</td><td class="did">Another process edited the row afterwards</td><td class="res"><span class="badge b-refused"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg>Correctly refused</span></td><td class="t" data-num="3" data-unit="ms">3 ms</td></tr>
+          <tr class="is-refusal"><td class="scn">unparseable_sql</td><td class="did">A CTE-heavy statement it cannot safely read</td><td class="res"><span class="badge b-refused"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 6.5l2.2 2.2 4.8-5"/></svg>Correctly refused</span></td><td class="t" data-num="17" data-unit="ms">17 ms</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="notes">
+      <div class="note reveal" style="--c: var(--accent)">
+        <h3><i></i>Why a refusal is a pass</h3>
+        <p>In <code>partial_drift</code>, reverting would have destroyed someone else's edit. In <code>unparseable_sql</code>, Backstep could not safely read the statement, so it declined to guess.</p>
+      </div>
+      <div class="note reveal" style="--c: var(--warn)">
+        <h3><i></i>The honest partial</h3>
+        <p>In <code>cascading_delete</code>, Postgres removes child rows inside the same statement, before Backstep can see them. The parents come back; the children do not.</p>
+      </div>
+    </div>
+    </div>
+    <a class="source-link" href="https://github.com/PeytonR72/backstep-ai/blob/master/eval_results.json">Raw results in eval_results.json <span aria-hidden="true">→</span></a>
+  </div>
+</section>
+
+<!-- ================= ENGINEERING ================= -->
+<section class="section" aria-labelledby="eng-title">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <span class="eyebrow">Engineering approach</span>
+      <h2 id="eng-title">A safety tool has to be trustworthy itself.</h2>
+    </div>
+    <div class="bento">
+      <article class="tile span-4 reveal">
+        <span class="k">Refuse instead of guess</span>
+        <h3>10 possible revert outcomes. Only 1 of them changes data.</h3>
+        <p>Missing pre-state, no primary key, drift or an action already undone: any doubt ends in a refusal with a clear reason.</p>
+        <ul class="outcomes" aria-label="Revert outcomes; only reverted modifies data">
+          <li class="mod"><i></i>reverted</li>
+          <li><i></i>refused_not_committed</li>
+          <li><i></i>refused_already_reverted</li>
+          <li><i></i>refused_irreversible</li>
+          <li><i></i>refused_no_inverse</li>
+          <li><i></i>refused_no_pre_state</li>
+          <li><i></i>refused_no_adapter</li>
+          <li><i></i>refused_no_primary_key</li>
+          <li><i></i>refused_drift</li>
+          <li><i></i>failed</li>
+        </ul>
+      </article>
+      <article class="tile span-2 reveal">
+        <span class="k">Real Postgres tests</span>
+        <div class="big">110+</div>
+        <p>tests against a disposable Postgres container, with a fresh schema for each test.</p>
+        <ul class="checks">
+          <li><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5l2.5 2.5L11 4"/></svg>Fully typed with mypy</li>
+          <li><svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7.5l2.5 2.5L11 4"/></svg>Linted with ruff</li>
+        </ul>
+      </article>
+      <article class="tile span-2 reveal">
+        <span class="k">Mutation guard tests</span>
+        <h3>Each safety check is proven to matter.</h3>
+        <div class="guard" aria-label="Example from the tests: with the drift check on, partial_drift is refused. With it off, the undo overwrites the other edit."><span class="ok">drift check on </span>  refused
+<span class="bad">drift check off</span>  overwrites edit</div>
+      </article>
+      <article class="tile span-2 reveal">
+        <span class="k">Lossless serialization</span>
+        <h3>Restored rows match byte for byte.</h3>
+        <div class="types" aria-label="Types handled"><span>Decimal</span><span>UUID</span><span>timestamp</span><span>bytes</span><span>range</span></div>
+      </article>
+      <article class="tile span-2 reveal">
+        <span class="k">Append-only journal</span>
+        <h3>History is never rewritten.</h3>
+        <p>Once an action is recorded, only its status can change.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= GETTING STARTED ================= -->
+<section class="section" aria-labelledby="start-title">
+  <div class="wrap start">
+    <div class="section-head reveal">
+      <span class="eyebrow">Getting started</span>
+      <h2 id="start-title">Four commands.</h2>
+      <p>Install with uv, then point your MCP client at the proxy instead of the upstream server.</p>
+    </div>
+    <div class="reveal">
+      <div class="shell">
+        <div class="shell-bar">
+          <span>terminal</span>
+          <button class="icon-btn" type="button" id="copy">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5v-.5A1.5 1.5 0 009 1.5H4A1.5 1.5 0 002.5 3v5A1.5 1.5 0 004 9.5h.5"/></svg>
+            <span id="copy-label">Copy</span>
+          </button>
+        </div>
+<pre><code><span class="p">$ </span>uv sync                 <span class="c"># install dependencies</span>
+<span class="p">$ </span>uv run backstep init    <span class="c"># optional: Claude grades each tool</span>
+<span class="p">$ </span>uv run backstep doctor  <span class="c"># check config, journal, database</span>
+<span class="p">$ </span>uv run backstep serve   <span class="c"># run the proxy</span></code></pre>
+      </div>
+      <p class="start-note">First copy <code>backstep.example.toml</code> to <code>backstep.toml</code> and add your upstream server and Postgres connection string. <code>init</code> needs <code>ANTHROPIC_API_KEY</code>.</p>
+      <p class="sr-only" role="status" id="copy-status"></p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Backstep, back to top">
+      <img src="../docs/media/brand/backstep-logo.svg" alt="" width="28" height="28">
+      <span>Backstep</span>
+    </a>
+    <p>Built with Python, MCP, Postgres, sqlglot.</p>
+    <nav aria-label="Footer">
+      <a href="https://github.com/PeytonR72/backstep-ai">GitHub</a>
+      <a href="https://github.com/PeytonR72/backstep-ai/blob/master/LICENSE">MIT license</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var reduceMQ = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var reduced = function () { return reduceMQ.matches; };
+  var clamp = function (v, a, b) { return Math.min(b, Math.max(a, v)); };
+  var easeOut = function (x) { return 1 - Math.pow(1 - x, 3); };
+  var easeInOut = function (x) { return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+
+  /* ---------- Nav hairline on scroll ---------- */
+  var nav = document.getElementById("nav");
+  var onScroll = function () { nav.classList.toggle("is-scrolled", window.scrollY > 8); };
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+
+  /* ---------- Scroll reveals (run once) ---------- */
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
+    });
+  }, { rootMargin: "0px 0px -8% 0px" });
+  document.querySelectorAll(".reveal").forEach(function (el) { io.observe(el); });
+
+  /* ---------- How it works: light up step by step ---------- */
+  var flow = document.getElementById("flow");
+  var steps = flow.querySelectorAll(".step");
+  new IntersectionObserver(function (entries, obs) {
+    if (!entries[0].isIntersecting) return;
+    obs.disconnect();
+    steps.forEach(function (s, i) {
+      setTimeout(function () { s.classList.add("is-lit"); }, reduced() ? 0 : 180 + i * 260);
+    });
+  }, { rootMargin: "0px 0px -20% 0px" }).observe(flow);
+
+  /* ---------- Benchmark count-ups ---------- */
+  var counters = document.querySelectorAll("[data-count], [data-num]");
+  var runCount = function (el) {
+    var isScore = el.hasAttribute("data-count");
+    var target = parseFloat(isScore ? el.dataset.count : el.dataset.num);
+    var dec = parseInt(el.dataset.dec || "0", 10);
+    var unit = el.dataset.unit ? " " + el.dataset.unit : "";
+    var dur = isScore ? 700 : 1100;
+    var t0 = null;
+    var tick = function (now) {
+      if (t0 === null) t0 = now;
+      var p = clamp((now - t0) / dur, 0, 1);
+      el.textContent = (target * easeOut(p)).toFixed(dec) + unit;
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+  if (!reduced()) {
+    var cio = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { cio.unobserve(e.target); runCount(e.target); }
+      });
+    }, { rootMargin: "0px 0px -10% 0px" });
+    counters.forEach(function (el) { cio.observe(el); });
+  }
+
+  /* ---------- Watch demo: scroll to the video and start it ---------- */
+  var video = document.getElementById("demo-video");
+  document.getElementById("watch").addEventListener("click", function (ev) {
+    ev.preventDefault();
+    document.getElementById("video").scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" });
+    history.replaceState(null, "", "#video");
+    var p = video.play();
+    if (p && p.catch) p.catch(function () {});
+    video.focus({ preventScroll: true });
+  });
+
+  /* ---------- Copy commands ---------- */
+  var copyBtn = document.getElementById("copy");
+  var copyLabel = document.getElementById("copy-label");
+  var copyStatus = document.getElementById("copy-status");
+  var COMMANDS = "uv sync\nuv run backstep init\nuv run backstep doctor\nuv run backstep serve\n";
+  var fallbackCopy = function (text) {
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  };
+  var copied = function (ok) {
+    copyLabel.textContent = ok ? "Copied" : "Copy failed";
+    copyLabel.classList.toggle("copy-ok", ok);
+    copyStatus.textContent = ok ? "Commands copied to clipboard" : "Copy failed";
+    setTimeout(function () { copyLabel.textContent = "Copy"; copyLabel.classList.remove("copy-ok"); copyStatus.textContent = ""; }, 1800);
+  };
+  copyBtn.addEventListener("click", function () {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(COMMANDS).then(function () { copied(true); }, function () { copied(fallbackCopy(COMMANDS)); });
+    } else {
+      copied(fallbackCopy(COMMANDS));
+    }
+  });
+
+  /* ================= The rewind ================= */
+  var ACCOUNTS = [100, 250, 75, 500];
+  var TOTAL = 925;
+  var AGENT_CMD = "UPDATE accounts SET balance = 0;";
+  var YOU_CMD = "backstep undo-session";
+
+  // Timeline in ms. One loop is LOOP long; render(t) is a pure function of t.
+  var T_TYPE1 = 700, MS1 = 46;
+  var T_EXEC = T_TYPE1 + AGENT_CMD.length * MS1 + 280;
+  var ROW_STAGGER = 70;
+  var T_TYPE2 = T_EXEC + 1900, MS2 = 52;
+  var T_REWIND = T_TYPE2 + YOU_CMD.length * MS2 + 350;
+  var D_REWIND = 2400;
+  var T_DONE = T_REWIND + D_REWIND;
+  var T_FADE = T_DONE + 3800;
+  var LOOP = T_FADE + 500;
+
+  var demo = document.getElementById("demo");
+  var lineAgent = document.getElementById("line-agent");
+  var lineYou = document.getElementById("line-you");
+  var outAgent = document.getElementById("out-agent");
+  var outYou = document.getElementById("out-you");
+  var statusEl = document.getElementById("demo-status");
+  var captionEl = document.getElementById("demo-caption");
+  var rowsEl = document.getElementById("rows").rows;
+  var moneyEls = Array.prototype.map.call(rowsEl, function (r) { return r.querySelector(".money"); });
+  var totalEl = document.getElementById("total");
+  var totalRow = document.getElementById("total-row");
+  var ledger = document.getElementById("ledger");
+  var art = document.getElementById("rewind-art");
+  var body = document.getElementById("arrow-body");
+  var head = document.getElementById("arrow-head");
+  var tip = document.getElementById("arrow-tip");
+  var pauseBtn = document.getElementById("demo-pause");
+  var replayBtn = document.getElementById("demo-replay");
+
+  var BODY_LEN = body.getTotalLength();
+  var HEAD_LEN = head.getTotalLength();
+  body.style.strokeDasharray = BODY_LEN + " " + BODY_LEN;
+  head.style.strokeDasharray = HEAD_LEN + " " + HEAD_LEN;
+
+  // The arrow is drawn from its tail (27,49) back to its head (15,27): a step back.
+  // Its vertical travel, y 49 -> 27, is mapped onto the table so the bottom row's
+  // centre sits at y=49 and the top row's centre at y=27. Each row rewinds while
+  // the drawing tip passes through its band, so the rows follow the logo's curve.
+  var Y_TOP = 27, Y_BOT = 49, N = ACCOUNTS.length;
+  var rowBandY = function (k) { // band edges, in arrow units, for row k (0 = alice)
+    var step = (Y_BOT - Y_TOP) / (N - 1);
+    var c = Y_TOP + k * step;
+    return [c - step / 2, c + step / 2];
+  };
+  // Pre-compute, along the drawn distance (from the tail), where the tip enters and
+  // leaves each row's band. Sampling keeps this exact to the real path geometry.
+  var windows = (function () {
+    var w = ACCOUNTS.map(function () { return [Infinity, -Infinity]; });
+    var SAMPLES = 400;
+    for (var i = 0; i <= SAMPLES; i++) {
+      var d = (i / SAMPLES) * BODY_LEN;
+      var pt = body.getPointAtLength(BODY_LEN - d);
+      for (var k = 0; k < N; k++) {
+        var b = rowBandY(k);
+        var inBand = pt.y >= b[0] - 0.01 && pt.y <= b[1] + 0.01;
+        if (inBand) { w[k][0] = Math.min(w[k][0], d); w[k][1] = Math.max(w[k][1], d); }
+      }
+    }
+    return w;
+  })();
+
+  var layoutArt = function () {
+    var lr = ledger.getBoundingClientRect();
+    var first = rowsEl[0].getBoundingClientRect();
+    var last = rowsEl[N - 1].getBoundingClientRect();
+    var cTop = first.top + first.height / 2 - lr.top;
+    var cBot = last.top + last.height / 2 - lr.top;
+    var s = (cBot - cTop) / (Y_BOT - Y_TOP); // px per arrow unit, uniform: geometry unchanged
+    var size = 64 * s;
+    art.setAttribute("width", size);
+    art.setAttribute("height", size);
+    art.style.top = (cTop - Y_TOP * s) + "px";
+    // The arc's outer edge (x = 49 + half stroke) lines up just inside the balance column.
+    art.style.left = (lr.width - 51.5 * s - 2) + "px";
+  };
+
+  var fmt = function (v) { return "$" + Math.round(v); };
+  var typed = function (text, start, ms, t) {
+    return clamp(Math.floor((t - start) / ms), 0, text.length);
+  };
+  var showCmd = function (el, text, n, active) {
+    var html = text.slice(0, n)
+      .replace(/^(UPDATE|SET)\b/g, '<span class="kw">$1</span>')
+      .replace(/ (SET) /, ' <span class="kw">$1</span> ');
+    el.innerHTML = html + (active ? '<span class="caret' + (n === 0 || n === text.length ? " blink" : "") + '"></span>' : "");
+  };
+  var setStatus = function (text, tone) {
+    if (statusEl.textContent !== text) statusEl.textContent = text;
+    if (tone) statusEl.setAttribute("data-tone", tone); else statusEl.removeAttribute("data-tone");
+  };
+  var setOut = function (el, text, tone) {
+    if (el.textContent !== text) el.textContent = text;
+    if (tone) el.setAttribute("data-tone", tone); else el.removeAttribute("data-tone");
+  };
+
+  var render = function (t) {
+    // Terminal
+    var n1 = typed(AGENT_CMD, T_TYPE1, MS1, t);
+    var n2 = typed(YOU_CMD, T_TYPE2, MS2, t);
+    showCmd(lineAgent, AGENT_CMD, n1, t < T_EXEC);
+    showCmd(lineYou, YOU_CMD, t >= T_TYPE2 - 400 ? n2 : 0, t >= T_TYPE2 - 400 && t < T_REWIND);
+    setOut(outAgent, t >= T_EXEC ? "No WHERE clause: all 4 balances set to $0." : "", "danger");
+    setOut(outYou, t >= T_DONE ? "4 rows restored. Nothing else had changed them." : (t >= T_REWIND ? "Restoring from the journal…" : ""), t >= T_DONE ? "accent" : null);
+
+    // Rewind progress
+    var p = t >= T_REWIND ? easeInOut(clamp((t - T_REWIND) / D_REWIND, 0, 1)) : 0;
+    var bodyP = clamp(p / 0.86, 0, 1);       // body draws first...
+    var headP = clamp((p - 0.82) / 0.18, 0, 1); // ...then the arrowhead lands
+    var drawn = bodyP * BODY_LEN;
+    var rewinding = t >= T_REWIND;
+
+    // Rows
+    var total = 0;
+    for (var k = 0; k < N; k++) {
+      var tr = rowsEl[k];
+      var broken = t >= T_EXEC + k * ROW_STAGGER;
+      var v, local = 0;
+      if (!broken) v = ACCOUNTS[k];
+      else if (!rewinding) v = 0;
+      else {
+        var w = windows[k];
+        local = clamp((drawn - w[0]) / Math.max(1e-6, w[1] - w[0]), 0, 1);
+        v = ACCOUNTS[k] * easeOut(local);
+      }
+      total += v;
+      moneyEls[k].textContent = fmt(v);
+      var flash = broken && t < T_EXEC + k * ROW_STAGGER + 140;
+      tr.classList.toggle("is-flash", flash);
+      tr.classList.toggle("is-broken", broken && !flash && local < 1);
+      tr.classList.toggle("is-restored", rewinding && local >= 1 && t < T_FADE);
+      // the balance steps back a few pixels while the arrow passes through its row
+      moneyEls[k].style.transform = rewinding && local > 0 && local < 1 ? "translateX(" + (-6 * Math.sin(Math.PI * local)).toFixed(2) + "px)" : "";
+    }
+    totalEl.textContent = fmt(total);
+    var anyBroken = t >= T_EXEC;
+    totalRow.classList.toggle("is-broken", anyBroken && total < TOTAL - 0.5);
+    totalRow.classList.toggle("is-restored", rewinding && total >= TOTAL - 0.5 && t < T_FADE);
+
+    // Arrow (geometry untouched; only its stroke reveal and opacity animate)
+    var fade = t >= T_FADE ? 1 - clamp((t - T_FADE) / 400, 0, 1) : 1;
+    body.style.strokeDashoffset = -(BODY_LEN - drawn);
+    head.style.strokeDashoffset = HEAD_LEN * (1 - headP);
+    art.style.opacity = rewinding ? fade : 0;
+    if (rewinding && bodyP < 1) {
+      var pt = body.getPointAtLength(BODY_LEN - drawn);
+      tip.setAttribute("cx", pt.x); tip.setAttribute("cy", pt.y);
+      tip.setAttribute("opacity", "1");
+    } else tip.setAttribute("opacity", "0");
+
+    // Status + caption
+    if (t < T_EXEC) setStatus("Before", null);
+    else if (t < T_REWIND) setStatus("Mistake", "danger");
+    else if (t < T_DONE) setStatus("Rewinding", "accent");
+    else if (t < T_FADE) setStatus("Restored", "accent");
+    else setStatus("Before", null);
+    captionEl.classList.toggle("is-in", t >= T_DONE + 150 && t < T_FADE);
+    lineAgent.parentNode.style.opacity = lineYou.parentNode.style.opacity = outAgent.style.opacity = outYou.style.opacity = fade;
+  };
+
+  // Clock: only advances while playing, on-screen and the tab is visible.
+  var t = 0, last = null, playing = true, onScreen = false, raf = null;
+  var running = function () { return playing && onScreen && !document.hidden && !reduced(); };
+  var frame = function (now) {
+    raf = null;
+    if (!running()) { last = null; return; }
+    if (last !== null) t = (t + Math.min(100, now - last)) % LOOP;
+    last = now;
+    render(t);
+    raf = requestAnimationFrame(frame);
+  };
+  var kick = function () { if (running() && raf === null) { last = null; raf = requestAnimationFrame(frame); } };
+
+  new IntersectionObserver(function (entries) {
+    onScreen = entries[0].isIntersecting;
+    kick();
+  }, { threshold: 0.25 }).observe(demo);
+  document.addEventListener("visibilitychange", kick);
+  if (reduceMQ.addEventListener) reduceMQ.addEventListener("change", kick);
+
+  var setPlaying = function (on) {
+    playing = on;
+    pauseBtn.setAttribute("aria-pressed", String(!on));
+    pauseBtn.setAttribute("aria-label", on ? "Pause demo" : "Play demo");
+    document.getElementById("ico-pause").hidden = !on;
+    document.getElementById("ico-play").hidden = on;
+    kick();
+  };
+  pauseBtn.addEventListener("click", function () { setPlaying(!playing); });
+  replayBtn.addEventListener("click", function () { t = 0; render(0); setPlaying(true); });
+
+  var onResize = function () { layoutArt(); render(t); };
+  window.addEventListener("resize", onResize);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(onResize);
+  layoutArt();
+  render(0);
+})();
+</script>
+</body>
+</html>
